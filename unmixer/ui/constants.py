@@ -1,0 +1,5 @@
+APP_NAME = 'Unmixer'
+
+SUCCESS_MESSAGE_TITLE = 'Success'
+
+FONT_WEIGHT_BOLD = 800

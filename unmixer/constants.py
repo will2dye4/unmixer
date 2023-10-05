@@ -1,0 +1,7 @@
+DEFAULT_OUTPUT_DIR = '~/unmixer'
+
+GUITAR_TRACK_NAME = 'guitar'
+OTHER_TRACK_NAME = 'other'
+PIANO_TRACK_NAME = 'piano'
+
+ISOLATED_TRACK_FORMATS = {'mp3', 'wav'}

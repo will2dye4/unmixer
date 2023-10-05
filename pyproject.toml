@@ -1,0 +1,25 @@
+[build-system]
+requires = ['poetry-core']
+build-backend = 'poetry.core.masonry.api'
+
+[tool.poetry]
+name = 'unmixer'
+version = '0.1.0'
+description = 'Create and explore isolated tracks from music files'
+license = 'MIT'
+readme = 'README.md'
+authors = ['William Dye']
+keywords = ['demux', 'demux music', 'music source separation', 'split', 'split music', 'unmix', 'unmix music', 'unmixer']
+repository = 'https://github.com/will2dye4/unmixer.git'
+packages = [{include = 'unmixer'}]
+
+[tool.poetry.dependencies]
+python = '^3.11,<3.13'
+demucs = '^4.0.1'
+ffmpeg-python = '^0.2.0'
+numpy = '^1.26.0'
+pyqt6 = '^6.5.2'
+soundfile = '^0.12.1'
+
+[tool.poetry.scripts]
+unmixer = 'unmixer.__main__:main'
