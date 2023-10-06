@@ -4,7 +4,7 @@ build-backend = 'poetry.core.masonry.api'
 
 [tool.poetry]
 name = 'unmixer'
-version = '0.1.0'
+version = "1.0.0"
 description = 'Create and explore isolated tracks from music files'
 license = 'MIT'
 readme = 'README.md'
