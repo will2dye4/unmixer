@@ -20,8 +20,8 @@ def parse_args(args: list[str]) -> argparse.Namespace:
                         help=f'path to the directory for output isolated tracks (default: {DEFAULT_OUTPUT_DIR})')
     
     other_track_group = parser.add_mutually_exclusive_group()
-    other_track_group.add_argument('-g', '--guitar', action='store_true', help='Show "Guitar" track instead of "Other"')
-    other_track_group.add_argument('-p', '--piano', action='store_true', help='Show "Piano" track instead of "Other"')
+    other_track_group.add_argument('-g', '--guitar', action='store_true', help='show "Guitar" track instead of "Other"')
+    other_track_group.add_argument('-p', '--piano', action='store_true', help='show "Piano" track instead of "Other"')
     
     return parser.parse_args(args)
 

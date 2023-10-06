@@ -42,6 +42,8 @@ class UnmixerTrackExplorerWindow(QMainWindow):
         super().__init__()
         self.app = app
         
+        # Optimization only: store the source file path after importing a file
+        # to avoid the need to create a full mix on-the-fly using ffmpeg.
         self.source_file_path = os.path.expanduser(source_file_path) if source_file_path else None
         self.input_dir_path = os.path.expanduser(input_dir_path)
         self.song_title = os.path.basename(self.input_dir_path)
@@ -128,6 +130,7 @@ class UnmixerUI:
     def stop_import_process(self) -> None:
         if self.import_window and ((import_process := self.import_window.importer.import_process) and import_process.is_alive()):
             import_process.terminate()
+            # TODO - delete intermediate dir (htdemucs) if it exists
         
     def show_track_explorer_window(self, source_file_path: Optional[str] = None) -> None:
         if self.main_window:
