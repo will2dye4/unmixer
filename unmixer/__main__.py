@@ -63,6 +63,7 @@ def main(args: Optional[list[str]] = None) -> None:
     elif config.piano:
         other_track_name = PIANO_TRACK_NAME
     
+    print('Launching Unmixer UI...')
     UnmixerUI(song_path=song_path, input_dir_path=input_dir_path,
               output_dir_path=output_dir_path, other_track_name=other_track_name).run()
 

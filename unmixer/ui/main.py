@@ -9,7 +9,7 @@ from unmixer.remix import merge_audio_files
 from unmixer.ui.constants import APP_NAME, SUCCESS_MESSAGE_TITLE
 from unmixer.ui.importer import SongImporter
 from unmixer.ui.multitrack import MultiTrackDisplay
-from unmixer.util import is_isolated_track
+from unmixer.util import cleanup_intermediate_dir, is_isolated_track
 
 
 class UnmixerImportWindow(QMainWindow):
@@ -26,7 +26,7 @@ class UnmixerImportWindow(QMainWindow):
         self.app = app
         self.importer = SongImporter(source_file_path, output_dir_path, other_track_name=other_track_name)
         self.setCentralWidget(self.importer)
-        self.setWindowTitle(self.DEFAULT_WINDOW_TITLE)
+        self.setWindowTitle(self.IMPORTING_WINDOW_TITLE if source_file_path else self.DEFAULT_WINDOW_TITLE)
         self.setMinimumSize(self.MIN_WIDTH, self.MIN_HEIGHT)
 
 
@@ -93,7 +93,9 @@ class UnmixerTrackExplorerWindow(QMainWindow):
     def create_temp_mix_file(self, input_file_paths: list[str]) -> None:
         if not input_file_paths or len(input_file_paths) < 2:
             raise ValueError('Not enough input files provided!')
-        merge_audio_files(input_file_paths, self._output_file_path(input_file_paths))
+        output_path = self._output_file_path(input_file_paths)
+        print(f'Creating temporary mix file "{output_path}"...')
+        merge_audio_files(input_file_paths, output_path)
 
 
 class UnmixerUI:
@@ -130,7 +132,7 @@ class UnmixerUI:
     def stop_import_process(self) -> None:
         if self.import_window and ((import_process := self.import_window.importer.import_process) and import_process.is_alive()):
             import_process.terminate()
-            # TODO - delete intermediate dir (htdemucs) if it exists
+            cleanup_intermediate_dir(self.output_dir_path)
         
     def show_track_explorer_window(self, source_file_path: Optional[str] = None) -> None:
         if self.main_window:

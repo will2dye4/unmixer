@@ -415,3 +415,4 @@ class MultiTrackDisplay(QWidget):
         # This will overwrite the file if it exists, but the user already confirmed that they want that.
         shutil.copy(temp_file_path, export_path)
         QMessageBox.information(self, SUCCESS_MESSAGE_TITLE, f'Successfully exported {export_path}.')
+        print(f'Exported new mix file "{export_path}".')

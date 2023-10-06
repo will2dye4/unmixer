@@ -10,10 +10,6 @@ from unmixer.remix import create_isolated_tracks_from_audio_file
 from unmixer.ui.constants import FONT_WEIGHT_BOLD
 
 
-def import_audio_file(input_file_path: str, output_dir_path: str, other_track_name: Optional[str]) -> None:
-    create_isolated_tracks_from_audio_file(input_file_path, output_dir_path, other_track_name)
-
-
 class SongImporter(QWidget):
     
     CHOOSE_BUTTON_TEXT = '📂 Choose...'
@@ -91,14 +87,17 @@ class SongImporter(QWidget):
         if not self.input_file_path:
             return
         
+        if self.parent():
+            self.parent().setWindowTitle(self.parent().IMPORTING_WINDOW_TITLE)
+            self.parent().update()
+
         filename = os.path.basename(self.input_file_path)
-        self.parent().setWindowTitle(self.parent().IMPORTING_WINDOW_TITLE)
         self.title.setText(f'Now creating isolated tracks from:\n{filename}')
         self.subtitle.setText(self.SUBTITLE_TEXT)
         self.subtitle.setHidden(False)
         self.choose_file_button.setDisabled(True)
-        self._import_process = Process(target=import_audio_file,
+
+        self._import_process = Process(target=create_isolated_tracks_from_audio_file,
                                        args=(self.input_file_path, self.output_dir_path, self.other_track_name))
         self._import_process.start()
         self.check_import_status_timer.start()
-        self.parent().update()

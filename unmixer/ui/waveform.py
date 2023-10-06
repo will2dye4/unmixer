@@ -8,11 +8,10 @@ from soundfile import SoundFile
 import numpy as np
 
 
-# TODO - experiment with different orderings?
 WAVEFORM_BACKGROUND_COLORS = [
     (QColor(20, 80, 200), QColor(90, 180, 240)),    # blue   (bass)
     (QColor(5, 175, 30), QColor(100, 240, 120)),    # green  (drums)
-    (QColor(230, 30, 15), QColor(240, 110, 100)),   # red    (other/guitar)
+    (QColor(230, 30, 15), QColor(240, 110, 100)),   # red    (other/guitar/piano)
     (QColor(245, 225, 10), QColor(235, 240, 150)),  # yellow (vocals)
     (QColor(245, 90, 10), QColor(250, 150, 100)),   # orange
     (QColor(100, 5, 175), QColor(155, 55, 245)),    # purple

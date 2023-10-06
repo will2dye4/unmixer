@@ -7,6 +7,7 @@ import demucs.separate
 import ffmpeg
 
 from unmixer.constants import OTHER_TRACK_NAME
+from unmixer.util import cleanup_intermediate_dir
 
 
 MIX_FILTER_NAME = 'amix'
@@ -34,14 +35,13 @@ def create_isolated_tracks_from_audio_file(input_file_path: str, output_dir_path
     
     demucs.separate.main([input_file_path, '--out', output_dir_path])
     
+    # demucs creates an intermediate directory for the model name.
+    # Move the isolated tracks out of this directory.
     file_name = os.path.splitext(os.path.basename(input_file_path))[0]
-    intermediate_dir = os.path.join(output_dir_path, DEFAULT_MODEL)
     output_dir = os.path.join(output_dir_path, file_name)
-    shutil.move(os.path.join(intermediate_dir, file_name), output_dir)
+    shutil.move(os.path.join(output_dir_path, DEFAULT_MODEL, file_name), output_dir)
     print(f'Wrote isolated tracks to "{output_dir}".')
-    
-    if not os.listdir(intermediate_dir):
-        shutil.rmtree(intermediate_dir)
+    cleanup_intermediate_dir(output_dir_path)
     
     if other_track_name and (other_track := next((n for n in os.listdir(output_dir) if n.startswith(OTHER_TRACK_NAME)), None)):
         _, extension = os.path.splitext(other_track)
