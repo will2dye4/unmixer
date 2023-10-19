@@ -72,7 +72,7 @@ $ unmixer /path/to/Limelight.mp3
 ```
 
 When invoked with no arguments, `unmixer` will open a Song Importer window containing
-a button labeled `Explore islated tracks...` and another button labeled `Choose a song...`
+a button labeled `Explore isolated tracks...` and another button labeled `Choose a song...`
 (see the screenshot below). The Song Importer window may also be opened at any time using
 the keyboard shortcut `Ctrl+0` (`Cmd+0` on macOS).
 
