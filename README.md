@@ -200,17 +200,21 @@ directory (see the screenshot below).
 
 #### Playback Controls
 
-Use the `▶️` (Play) / `⏸️` (Pause) button found in the playback controls at the bottom of the
-Track Explorer window to control playback of the currently selected track(s). Press the
-`⏮️` (Restart) button to start playback at the beginning of the song. Press the `⏪️` (Skip Back)
-button to skip back one second at a time; press and hold the button to repeatedly skip back
-until the button is released. Press the `⏩️` (Skip Forward) button to skip forward one second
-at a time; press and hold the button to repeatedly skip forward until the button is released.
+Use the ▶️ (Play) / ⏸️ (Pause) button found in the playback controls at the bottom of the
+Track Explorer window (or press the Space bar) to control playback of the currently selected
+track(s). Press the ⏮️ (Restart) button to start playback at the beginning of the song. Press
+the ⏪️ (Skip Back) button to skip back one second at a time; press and hold the button to
+repeatedly skip back until the button is released. Press the ⏩️ (Skip Forward) button to skip
+forward one second at a time; press and hold the button to repeatedly skip forward until the
+button is released. The left and right arrow keys may also be used to skip back and forward,
+respectively.
 
 Use the volume slider to the right of the playback controls to adjust the playback volume of the
-currently selected tracks. Note that the underlying isolated track files themselves are NOT
-modified. `unmixer` does not currently provide a way to adjust the relative volume levels of the
-various isolated tracks in the overall mix, although this feature may be added in a future version.
+currently selected tracks. Alternatively, the keyboard shortcuts `Ctrl+Up` and `Ctrl+Down`
+(`Cmd+Up` and `Cmd+Down` on macOS) may be used to raise and lower the volume, respectively.
+Note that the underlying isolated track files themselves are NOT modified. `unmixer` does not
+currently provide a way to adjust the relative volume levels of the various isolated tracks in the
+overall mix, although this feature may be added in a future version.
 
 When the song is playing, you can drag the triangular playhead (displayed above the very topmost
 track, with a white line extending down over all of the waveforms) to skip to a specific part of
