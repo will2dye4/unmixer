@@ -1,6 +1,6 @@
 # unmixer - create and explore isolated tracks from music files
 
-[![PyPI Version](https://img.shields.io/pypi/v/unmixer)](https://pypi.org/project/unmixer/) [![PyPI Downloads](https://img.shields.io/pypi/dm/unmixer)](https://pypi.org/project/unmixer/) [![MIT License](https://img.shields.io/github/license/will2dye4/unmixer)](https://github.com/will2dye4/unmixer/blob/master/LICENSE)
+[![PyPI Version](https://img.shields.io/pypi/v/unmixer)](https://pypi.org/project/unmixer/) [![Python Version](https://img.shields.io/pypi/pyversions/unmixer)](https://www.python.org/downloads/) [![PyPI Downloads](https://img.shields.io/pypi/dm/unmixer)](https://pypi.org/project/unmixer/) [![MIT License](https://img.shields.io/github/license/will2dye4/unmixer)](https://github.com/will2dye4/unmixer/blob/master/LICENSE)
 
 `unmixer` is a graphical utility and Python package for creating isolated tracks
 (drums, bass, vocals, etc.) from music files.
