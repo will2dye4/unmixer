@@ -18,7 +18,7 @@ ensure that you have a recent version of Python installed before proceeding.
 Run the following command in a shell (Linux or macOS is assumed):
 
 ```
-$ pip install unmixer
+$ pip install --upgrade unmixer
 ```
 
 The package does depend on a few external Python packages available on PyPI. If you wish to
@@ -45,7 +45,7 @@ the program accepts.
 
 ```
 $ unmixer -h
-usage: unmixer [-h] [-o OUTPUT] [-g | -p] [music_file_or_track_dir]
+usage: unmixer [-h] [--mp3] [-o OUTPUT] [-g | -p] [music_file_or_track_dir]
 
 create and explore isolated tracks from music files
 
@@ -55,6 +55,7 @@ positional arguments:
 
 options:
 -h, --help            show this help message and exit
+--mp3, --output-mp3   output isolated tracks as MP3 files instead of WAV
 -o OUTPUT, --output OUTPUT, --output-dir OUTPUT
                       path to the directory for output isolated tracks (default: ~/unmixer)
 -g, --guitar          show "Guitar" track instead of "Other"
@@ -70,14 +71,30 @@ For example:
 $ unmixer /path/to/Limelight.mp3
 ```
 
-When invoked with no arguments, `unmixer` will open a window containing a button
-labeled `Choose...` (see the screenshot below).
+When invoked with no arguments, `unmixer` will open a Song Importer window containing
+a button labeled `Explore islated tracks...` and another button labeled `Choose a song...`
+(see the screenshot below). The Song Importer window may also be opened at any time using
+the keyboard shortcut `Ctrl+0` (`Cmd+0` on macOS).
 
 ![Song Selection Dialog](https://raw.githubusercontent.com/will2dye4/unmixer/master/images/song_selection_dialog.png)
 
-Click the `Choose...` button and select a music file that you want to create
-isolated tracks from. The interface will change to reflect that the song is
-being processed (see the screenshot below).
+Press the `Choose a song...` button and select a music file that you want to create
+isolated tracks from. Alternatively, you may drag a music file from elsewhere on your computer
+and drop it on the Song Importer window. When a song has been selected, the interface will
+change to reflect that the song is ready to be processed (see the screenshot below).
+
+![Import Ready Dialog](https://raw.githubusercontent.com/will2dye4/unmixer/master/images/import_ready_dialog.png)
+
+Use the radio buttons to set the desired output format for the isolated tracks (MP3 or WAV)
+and the name of the "other" track (see Customizing the "Other" Track Name, below).
+
+If you selected the wrong song by mistake, press `Choose a different song...` to select a
+different file. When you are ready to unmix the song into isolated tracks, press the `Start`
+button at the bottom right of the Song Importer window. The interface will change to reflect
+that the song is being processed (see the screenshot below).
+
+Once processing has started, the `Start` button will change to a `Cancel` button; use this
+button to abandon processing of the song.
 
 ![Song Processing Dialog](https://raw.githubusercontent.com/will2dye4/unmixer/master/images/song_processing_dialog.png)
 
@@ -97,35 +114,49 @@ a future version.
 Although it may be possible to speed up the process by adjusting the flags passed to
 `demucs`, the current implementation tends to favor producing higher quality isolated
 tracks at the expense of taking a bit longer. A future version of `unmixer` may allow
-customizing the quality, output format, machine learning model, or other settings that
-can be configured by `demucs`; the current version does not allow any such customization.
+customizing the quality, bitrate, machine learning model, or other settings that
+can be configured by `demucs`; the current version does not allow any such customization
+aside from selecting the output format (see below).
+
+#### Output Format
+
+By default, isolated tracks are created as WAV files for the highest quality. To create
+MP3 files instead, the `--mp3`/`--output-mp3` flag may be passed to `unmixer`. Alternatively,
+use the **Isolated Track Output Format** radio buttons in the Song Importer window to select
+either MP3 or WAV format.
+
+**NOTE:** Mixes exported using the Track Explorer (see below) will use the same format
+as the source isolated track files.
 
 #### Output Tracks
 
 The following isolated tracks are created by default:
 
-* `bass.wav`
-* `drums.wav`
-* `other.wav`
-* `vocals.wav`
+* `bass.wav` (or `bass.mp3`)
+* `drums.wav` (or `drums.mp3`)
+* `other.wav` (or `other.mp3`)
+* `vocals.wav` (or `vocals.mp3`)
 
 These are the sources that are supported by `demucs`; unfortunately, there is currently
 no specific source available for guitar, piano, or any others besides bass, drums, and
 vocals. Any part of the song's audio that is not identified as bass, drums, or vocals
-will be found in the `other.wav` file.
+will be found in the `other.(mp3|wav)` file.
 
 #### Customizing the "Other" Track Name
 
-In some cases, the isolated track `other.wav` may contain primarily a single instrument,
+In some cases, the isolated track `other.(mp3|wav)` may contain primarily a single instrument,
 such as a guitar or piano. In these cases, it may be useful for the resulting output track
-to have a corresponding name such as `guitar.wav` or `piano.wav` instead of the default
-`other.wav`.
+to have a corresponding name such as `guitar.(mp3|wav)` or `piano.(mp3|wav)` instead of the
+default `other.(mp3|wav)`.
 
-To change the name of the "other" track to `guitar.wav`, the `-g`/`--guitar` flag may be
-passed to `unmixer`. Similarly, to change the name of the "other" track to `piano.wav`,
+To change the name of the "other" track to `guitar.(mp3|wav)`, the `-g`/`--guitar` flag may be
+passed to `unmixer`. Similarly, to change the name of the "other" track to `piano.(mp3|wav)`,
 the `-p`/`--piano` flag may be passed to `unmixer` instead. (It is an error to pass both
-`-g` and `-p` at the same time.) It is not currently possible to customize the name of the
-"other" track to be any arbitrary name, although this feature may be added in a future version.
+`-g` and `-p` at the same time.) Alternatively, use the **"Other" Track Name** radio buttons
+in the Song Importer window to select Guitar, Piano, or Other.
+
+It is not currently possible to customize the name of the "other" track to be any arbitrary name,
+although this feature may be added in a future version.
 
 #### Output Directory
 
@@ -153,6 +184,11 @@ To explore isolated tracks located in a specific directory, pass the path to the
 $ unmixer ~/unmixer/YYZ
 ```
 
+Alternatively, press the `Explore isolated tracks...` button in the Song Importer window
+(see above) and select a directory containing isolated tracks. You may also drop a directory
+containing isolated tracks onto the Song Importer window to open a Track Explorer window for
+that directory.
+
 **NOTE:** If you used `unmixer` to create isolated tracks for a song, the Track Explorer window
 will open automatically when the song is finished processing. (Again...please be patient!)
 
@@ -164,9 +200,17 @@ directory (see the screenshot below).
 
 #### Playback Controls
 
-Use the `Play`/`Pause` button found in the playback controls at the bottom of the Track Explorer
-to control playback of the currently selected track(s). Click the `Restart` button to start playback
-at the beginning of the song.
+Use the `▶️` (Play) / `⏸️` (Pause) button found in the playback controls at the bottom of the
+Track Explorer window to control playback of the currently selected track(s). Press the
+`⏮️` (Restart) button to start playback at the beginning of the song. Press the `⏪️` (Skip Back)
+button to skip back one second at a time; press and hold the button to repeatedly skip back
+until the button is released. Press the `⏩️` (Skip Forward) button to skip forward one second
+at a time; press and hold the button to repeatedly skip forward until the button is released.
+
+Use the volume slider to the right of the playback controls to adjust the playback volume of the
+currently selected tracks. Note that the underlying isolated track files themselves are NOT
+modified. `unmixer` does not currently provide a way to adjust the relative volume levels of the
+various isolated tracks in the overall mix, although this feature may be added in a future version.
 
 When the song is playing, you can drag the triangular playhead (displayed above the very topmost
 track, with a white line extending down over all of the waveforms) to skip to a specific part of
@@ -188,7 +232,7 @@ same time.
 
 Use the `Export...` button found in the playback controls at the bottom of the Track Explorer
 to export the currently selected (i.e., unmuted) tracks as a new file. A dialog box will open,
-allowing you to select a destination for the file and click `Save`. For example, to create an
+allowing you to select a destination for the file and press `Save`. For example, to create an
 instrumental mix of a song, mute the `Vocals` track and export the remaining tracks as a new mix.
 
 **NOTE:** Exporting is disabled when only a single track is selected, since that single track
@@ -206,6 +250,6 @@ subdirectory of the directory where the isolated tracks are located.
 In the same way as when creating isolated tracks (see above), the `-g`/`--guitar` flag may be
 passed to `unmixer` to change the displayed name of the `Other` track (if present) to `Guitar`.
 Similarly, to change the name of the `Other` track to `Piano`, the `-p`/`--piano` flag may be
-passed to `unmixer` instead. (It is an error to pass both `-g` and `-p` at the same time.) It
-is not currently possible to customize the name of the `Other` track to be any arbitrary name,
-although this feature may be added in a future version.
+passed to `unmixer` instead. (It is an error to pass both `-g` and `-p` at the same time.)
+It is not currently possible to customize the name of the `Other` track to be any arbitrary
+name, although this feature may be added in a future version.

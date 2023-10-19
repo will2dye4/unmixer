@@ -3,15 +3,18 @@ import os.path
 import shutil
 
 from PyQt6.QtCore import (
+    pyqtSignal,
     QLine,
+    QObject,
     QPoint,
     QPointF,
     QRect,
     Qt,
+    QThread,
     QTimer,
     QUrl,
 )
-from PyQt6.QtGui import QPainter, QPainterPath
+from PyQt6.QtGui import QMouseEvent, QPainter, QPainterPath
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QApplication,
@@ -20,13 +23,19 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
 from soundfile import SoundFile
 
 from unmixer.constants import OTHER_TRACK_NAME
-from unmixer.ui.constants import FONT_WEIGHT_BOLD, SUCCESS_MESSAGE_TITLE
+from unmixer.ui.constants import (
+    ERROR_MESSAGE_TITLE,
+    FONT_WEIGHT_BOLD,
+    PLAYBACK_VOLUME_SETTING_KEY,
+    SUCCESS_MESSAGE_TITLE,
+)
 from unmixer.ui.track import Track
 from unmixer.ui.waveform import Waveform, WAVEFORM_BACKGROUND_COLORS
 
@@ -38,6 +47,10 @@ SECONDS_PER_HOUR = SECONDS_PER_MINUTE * MINUTES_PER_HOUR
 
 class PlaybackControls(QWidget):
 
+    PLAYBACK_CONTROL_FONT_SIZE = 30
+    PLAYBACK_CONTROL_BUTTON_SPACING = 0
+    PLAYBACK_CONTROL_BUTTON_STYLE = 'background: transparent; border: none'
+
     PLAYBACK_TIME_FONT_SIZE = 15
     DEFAULT_PLAYBACK_TIME_TEXT = '0:00 / 0:00'
     PLAYBACK_TIMER_INTERVAL_MILLIS = 500
@@ -47,10 +60,19 @@ class PlaybackControls(QWidget):
     MIN_BUTTON_WIDTH = 90
     MIN_PLAYBACK_TIME_WIDTH = 120
 
+    MIN_VOLUME = 0
+    MAX_VOLUME = 100
+    VOLUME_INCREMENT = 5
+
+    SKIP_INTERVAL_MILLIS = 1_000  # Skip forward/back one second at a time.
+    SKIP_TIMER_INTERVAL_MILLIS = 200  # Skip forward/back every 200 ms when the corresponding button is held down.
+
     EXPORT_BUTTON_TEXT = '💾 Export...'
-    PLAY_BUTTON_TEXT = '▶️ Play'
-    PAUSE_BUTTON_TEXT = '⏸️ Pause'
-    RESTART_BUTTON_TEXT = '⏮️ Restart'
+    PLAY_BUTTON_TEXT = '▶️'
+    PAUSE_BUTTON_TEXT = '⏸️'
+    RESTART_BUTTON_TEXT = '⏮️'
+    SKIP_BACK_BUTTON_TEXT = '⏪️'
+    SKIP_FORWARD_BUTTON_TEXT = '⏩️'
     
     EXPORT_BUTTON_ENABLED_TOOLTIP = 'Export the selected tracks to a new file.'
     EXPORT_BUTTON_DISABLED_TOOLTIP_TEMPLATE = 'Enable 2-{n} tracks to export them as a new mix.'
@@ -65,18 +87,55 @@ class PlaybackControls(QWidget):
             self.export_button_disabled_tooltip = self.EXPORT_BUTTON_NOT_ENOUGH_TRACKS_TOOLTIP
         else:
             self.export_button_disabled_tooltip = self.EXPORT_BUTTON_DISABLED_TOOLTIP_TEMPLATE.format(n=len(parent.tracks)-1)
+        self.export_button.setStatusTip(self.export_button_disabled_tooltip)
         self.export_button.setToolTip(self.export_button_disabled_tooltip)
         self.export_button.setMinimumWidth(self.MIN_BUTTON_WIDTH)
         self.export_button.clicked.connect(self.export_selected_tracks)
 
         self.restart_button = QPushButton(self.RESTART_BUTTON_TEXT)
-        self.restart_button.setMinimumWidth(self.MIN_BUTTON_WIDTH)
+        self.restart_button.setStyleSheet(self.PLAYBACK_CONTROL_BUTTON_STYLE)
+        font = self.restart_button.font()
+        font.setPixelSize(self.PLAYBACK_CONTROL_FONT_SIZE)
+        self.restart_button.setFont(font)
         self.restart_button.clicked.connect(self.restart_track)
+
+        self._skipping_back = False
+        self.skip_back_button = QPushButton(self.SKIP_BACK_BUTTON_TEXT)
+        self.skip_back_button.setStyleSheet(self.PLAYBACK_CONTROL_BUTTON_STYLE)
+        font = self.skip_back_button.font()
+        font.setPixelSize(self.PLAYBACK_CONTROL_FONT_SIZE)
+        self.skip_back_button.setFont(font)
+        self.skip_back_button.mousePressEvent = self.skip_back_button_pressed
+        self.skip_back_button.mouseReleaseEvent = self.skip_back_button_released
+        self.skip_back_timer = QTimer(self)
+        self.skip_back_timer.setInterval(self.SKIP_TIMER_INTERVAL_MILLIS)
+        self.skip_back_timer.timeout.connect(self.skip_back)
 
         self.playing = False
         self.play_button = QPushButton(self.PLAY_BUTTON_TEXT)
-        self.play_button.setMinimumWidth(self.MIN_BUTTON_WIDTH)
+        self.play_button.setStyleSheet(self.PLAYBACK_CONTROL_BUTTON_STYLE)
+        font = self.play_button.font()
+        font.setPixelSize(int(self.PLAYBACK_CONTROL_FONT_SIZE * 1.5))  # Make Play/Pause button bigger than the rest.
+        self.play_button.setFont(font)
         self.play_button.clicked.connect(self.toggle_playback)
+
+        self._skipping_forward = False
+        self.skip_forward_button = QPushButton(self.SKIP_FORWARD_BUTTON_TEXT)
+        self.skip_forward_button.setStyleSheet(self.PLAYBACK_CONTROL_BUTTON_STYLE)
+        font = self.skip_forward_button.font()
+        font.setPixelSize(self.PLAYBACK_CONTROL_FONT_SIZE)
+        self.skip_forward_button.setFont(font)
+        self.skip_forward_button.mousePressEvent = self.skip_forward_button_pressed
+        self.skip_forward_button.mouseReleaseEvent = self.skip_forward_button_released
+        self.skip_forward_timer = QTimer(self)
+        self.skip_forward_timer.setInterval(self.SKIP_TIMER_INTERVAL_MILLIS)
+        self.skip_forward_timer.timeout.connect(self.skip_forward)
+
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setMinimum(self.MIN_VOLUME)
+        self.volume_slider.setMaximum(self.MAX_VOLUME)
+        self.volume_slider.setValue(parent._volume)  # parent.volume property does not exist yet
+        self.volume_slider.valueChanged.connect(self.volume_changed)
 
         self.playback_time = QLabel(self.DEFAULT_PLAYBACK_TIME_TEXT)
         font = self.playback_time.font()
@@ -94,11 +153,20 @@ class PlaybackControls(QWidget):
         layout.addStretch()
         layout.addWidget(self.export_button)
         layout.addSpacing(self.LAYOUT_SPACING)
-        layout.addWidget(self.restart_button)
-        layout.addWidget(self.play_button)
+
+        sublayout = QHBoxLayout()
+        sublayout.setSpacing(self.PLAYBACK_CONTROL_BUTTON_SPACING)
+        sublayout.addWidget(self.restart_button)
+        sublayout.addWidget(self.skip_back_button)
+        sublayout.addWidget(self.play_button)
+        sublayout.addWidget(self.skip_forward_button)
+        layout.addLayout(sublayout)
+
+        layout.addWidget(self.volume_slider)
         layout.addSpacing(self.LAYOUT_SPACING)
         layout.addWidget(self.playback_time)
         layout.addStretch()
+
         self.setLayout(layout)
         self.show()
 
@@ -145,22 +213,73 @@ class PlaybackControls(QWidget):
         self.playback_time.setText(self.DEFAULT_PLAYBACK_TIME_TEXT)
         self.update()
     
+    def skip_back_button_pressed(self, event: QMouseEvent) -> None:
+        if self.player and self.player.isPlaying() and not self._skipping_back and not self._skipping_forward:
+            self._skipping_back = True
+            # Skip back once in case the button is pressed and released quickly (i.e., a normal click).
+            self.skip_back()
+            self.skip_back_timer.start()
+        event.accept()
+
+    def skip_back_button_released(self, event: QMouseEvent) -> None:
+        if self._skipping_back:
+            self._skipping_back = False
+            self.skip_back_timer.stop()
+        event.accept()
+
+    def skip_forward_button_pressed(self, event: QMouseEvent) -> None:
+        if self.player and self.player.isPlaying() and not self._skipping_back and not self._skipping_forward:
+            self._skipping_forward = True
+            # Skip forward once in case the button is pressed and released quickly (i.e., a normal click).
+            self.skip_forward()
+            self.skip_forward_timer.start()
+        event.accept()
+
+    def skip_forward_button_released(self, event: QMouseEvent) -> None:
+        if self._skipping_forward:
+            self._skipping_forward = False
+            self.skip_forward_timer.stop()
+        event.accept()
+
     def export_selected_tracks(self) -> None:
         self.parent().export_selected_tracks()
 
     def enable_export_button(self) -> None:
         self.export_button.setDisabled(False)
+        self.export_button.setStatusTip(self.EXPORT_BUTTON_ENABLED_TOOLTIP)
         self.export_button.setToolTip(self.EXPORT_BUTTON_ENABLED_TOOLTIP)
+        self.parent().parent().enable_export_menu_action()
 
     def disable_export_button(self) -> None:
         self.export_button.setDisabled(True)
+        self.export_button.setStatusTip(self.export_button_disabled_tooltip)
         self.export_button.setToolTip(self.export_button_disabled_tooltip)
+        self.parent().parent().disable_export_menu_action()
     
     def enable_play_button(self) -> None:
         self.play_button.setDisabled(False)
 
     def disable_play_button(self) -> None:
         self.play_button.setDisabled(True)
+
+    def volume_changed(self) -> None:
+        self.parent().volume = max(self.MIN_VOLUME, min(self.volume_slider.value(), self.MAX_VOLUME))
+
+    def increase_volume(self) -> None:
+        if (volume := self.parent().volume) < self.MAX_VOLUME:
+            self.volume_slider.setValue(min(volume + self.VOLUME_INCREMENT, self.MAX_VOLUME))
+
+    def decrease_volume(self) -> None:
+        if (volume := self.parent().volume) > self.MIN_VOLUME:
+            self.volume_slider.setValue(max(self.MIN_VOLUME, volume - self.VOLUME_INCREMENT))
+
+    def skip_forward(self) -> None:
+        if self.player and self.player.isPlaying() and (position := self.player.position()) < self.player.duration():
+            self.player.setPosition(min(position + self.SKIP_INTERVAL_MILLIS, self.player.duration()))
+
+    def skip_back(self) -> None:
+        if self.player and self.player.isPlaying() and (position := self.player.position()) > 0:
+            self.player.setPosition(max(0, position - self.SKIP_INTERVAL_MILLIS))
 
 
 class MultiTrackPlayhead(QWidget):
@@ -212,7 +331,6 @@ class MultiTrackPlayhead(QWidget):
     def mousePressEvent(self, event):
         if self.is_mouse_event_within_playhead(event):
             self._dragging = True
-            # TODO: Figure out why this isn't working (on macOS 14.0).
             QApplication.setOverrideCursor(Qt.CursorShape.ClosedHandCursor)
             QApplication.processEvents()
     
@@ -264,25 +382,51 @@ class MultiTrackPlayhead(QWidget):
         painter.fillPath(triangle_path, self.COLOR)
 
 
+# Reference: https://realpython.com/python-pyqt-qthread/#using-qthread-vs-pythons-threading
+class UpdateMediaPlayerWorker(QObject):
+    exception = pyqtSignal(Exception)
+    finished = pyqtSignal()
+
+    def __init__(self, display: 'MultiTrackDisplay') -> None:
+        super().__init__()
+        self.display = display
+
+    def run(self):
+        try:
+            # This will create the file using ffmpeg, assuming it doesn't exist already.
+            self.display.file_path_for_selected_tracks = self.display.parent().temp_file_path(
+                self.display.selected_track_paths
+            )
+        except Exception as e:
+            self.exception.emit(e)
+        else:
+            self.finished.emit()
+
+
 class MultiTrackDisplay(QWidget):
     
-    DEFAULT_VOLUME = 50
+    DEFAULT_VOLUME = 80
     
     EXPORT_DIALOG_TITLE = 'Export Selected Tracks'
     
     TITLE_FONT_SIZE = 30
     
-    def __init__(self, song_title: str, file_paths: list[str], other_track_name: Optional[str] = None) -> None:
+    def __init__(self, parent: 'UnmixerTrackExplorerWindow', song_title: str, file_paths: list[str],
+                 other_track_name: Optional[str] = None) -> None:
         super().__init__()
         self._other_track_name = other_track_name
+        self.file_path_for_selected_tracks = None
+        self._ffmpeg_thread = None
+        self._ffmpeg_thread_worker = None
         self._soloed_track = None
+        self._volume = parent.app.settings.value(PLAYBACK_VOLUME_SETTING_KEY, self.DEFAULT_VOLUME)
         
         self.title = QLabel(f'Song:  {song_title}')
         font = self.title.font()
         font.setPixelSize(self.TITLE_FONT_SIZE)
         font.setWeight(FONT_WEIGHT_BOLD)
         self.title.setFont(font)
-        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)\
         
         self.audio_output = None
         self.player = None
@@ -320,6 +464,10 @@ class MultiTrackDisplay(QWidget):
         return [track for track in self.tracks if not track.muted]
     
     @property
+    def selected_track_paths(self) -> list[str]:
+        return [track.file_path for track in self.selected_tracks]
+
+    @property
     def soloed_track(self) -> Optional[Track]:
         return self._soloed_track
     
@@ -339,8 +487,16 @@ class MultiTrackDisplay(QWidget):
         self._soloed_track = track
     
     @property
-    def file_path_for_selected_tracks(self) -> str:
-        return self.parent().temp_file_path([track.file_path for track in self.selected_tracks])
+    def volume(self) -> int:
+        return self._volume
+
+    @volume.setter
+    def volume(self, value: int) -> None:
+        self._volume = value
+        self.parent().app.settings.setValue(PLAYBACK_VOLUME_SETTING_KEY, value)
+        if self.player:
+            self.audio_output.setVolume(self._volume / self.controls.MAX_VOLUME)
+            self.player.setAudioOutput(self.audio_output)
     
     def handle_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.EndOfMedia and self.controls.playing:
@@ -349,7 +505,7 @@ class MultiTrackDisplay(QWidget):
     
     def init_audio(self, source_url: Optional[QUrl] = None) -> tuple[QAudioOutput, QMediaPlayer]:
         audio_output = QAudioOutput()
-        audio_output.setVolume(self.DEFAULT_VOLUME)
+        audio_output.setVolume(self._volume / self.controls.MAX_VOLUME)
         player = QMediaPlayer()
         player.mediaStatusChanged.connect(self.handle_media_status_changed)
         player.setAudioOutput(audio_output)
@@ -358,7 +514,34 @@ class MultiTrackDisplay(QWidget):
         return audio_output, player
     
     def update_media_player_for_current_selected_tracks(self) -> None:
-        if not self.selected_tracks or not self.controls.playing:
+        selected_tracks = [track.file_path for track in self.selected_tracks]
+        if self.parent().has_temp_mix_file(selected_tracks):
+            # If the mix file already exists, it's fine to get the file path synchronously.
+            self.file_path_for_selected_tracks = self.parent().temp_file_path(selected_tracks)
+            self.update_media_player_for_current_selected_tracks_sync()
+            return
+
+        # If the mix file does not already exist, it will first be created using ffmpeg.
+        # Show a status message, then spawn a thread to handle the creation of the file
+        # so that UI updates are unblocked.
+        filename = os.path.basename(self.parent().output_file_path(selected_tracks))
+        self.parent().show_status_message(f'Mixing {filename}...')
+
+        self._ffmpeg_thread = QThread()
+        self._ffmpeg_thread_worker = UpdateMediaPlayerWorker(self)
+        self._ffmpeg_thread.started.connect(self._ffmpeg_thread_worker.run)
+        self._ffmpeg_thread.finished.connect(self._ffmpeg_thread.deleteLater)
+        self._ffmpeg_thread.finished.connect(self.update_media_player_for_current_selected_tracks_sync)
+
+        self._ffmpeg_thread_worker.moveToThread(self._ffmpeg_thread)
+        self._ffmpeg_thread_worker.finished.connect(self._ffmpeg_thread.quit)
+        self._ffmpeg_thread_worker.finished.connect(self._ffmpeg_thread_worker.deleteLater)
+        self._ffmpeg_thread_worker.exception.connect(self.handle_ffmpeg_thread_exception)
+
+        self._ffmpeg_thread.start()
+
+    def update_media_player_for_current_selected_tracks_sync(self) -> None:
+        if not self.selected_tracks or not self.controls.playing or not self.file_path_for_selected_tracks:
             return
         
         source_url = QUrl.fromLocalFile(self.file_path_for_selected_tracks)
@@ -392,7 +575,7 @@ class MultiTrackDisplay(QWidget):
         if len(self.selected_tracks) < 2 or len(self.selected_tracks) == len(self.tracks):
             return
         
-        temp_file_path = self.file_path_for_selected_tracks
+        temp_file_path = self.parent().temp_file_path(self.selected_track_paths)
         _, extension = os.path.splitext(temp_file_path)
         export_dir = os.path.dirname(self.selected_tracks[0].file_path)
         
@@ -416,3 +599,7 @@ class MultiTrackDisplay(QWidget):
         shutil.copy(temp_file_path, export_path)
         QMessageBox.information(self, SUCCESS_MESSAGE_TITLE, f'Successfully exported {export_path}.')
         print(f'Exported new mix file "{export_path}".')
+
+    def handle_ffmpeg_thread_exception(self, exception: Exception) -> None:
+        print(f'Failed to create temporary mix file: {exception}')
+        QMessageBox.warning(self, ERROR_MESSAGE_TITLE, 'Failed to create mix!')

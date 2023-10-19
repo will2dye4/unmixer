@@ -10,10 +10,12 @@ from unmixer.constants import OTHER_TRACK_NAME
 from unmixer.util import cleanup_intermediate_dir
 
 
+DEFAULT_MP3_PRESET = '2'  # range: 2 (best quality) --> 7 (fastest)
+
 MIX_FILTER_NAME = 'amix'
 
 
-# Example: ffmpeg -i bass.wav -i drums.wav -i guitar.wav -filter_complex amerge=inputs=3 -ac 2 instrumental.wav
+# Example: ffmpeg -i bass.wav -i drums.wav -i guitar.wav -filter_complex amix=inputs=3 -ac 2 instrumental.wav
 def merge_audio_files(input_file_paths: list[str], output_file_path: str) -> None:
     if not input_file_paths or len(input_file_paths) < 2:
         raise ValueError('Not enough input files provided!')
@@ -25,7 +27,8 @@ def merge_audio_files(input_file_paths: list[str], output_file_path: str) -> Non
 
 # Reference: https://github.com/facebookresearch/demucs#calling-from-another-python-program
 def create_isolated_tracks_from_audio_file(input_file_path: str, output_dir_path: str,
-                                           other_track_name: Optional[str] = None) -> None:
+                                           other_track_name: Optional[str] = None,
+                                           output_mp3_format: bool = False) -> None:
     input_file_path = os.path.expanduser(input_file_path)
     output_dir_path = os.path.expanduser(output_dir_path)
     print(f'Attempting to create isolated tracks from "{input_file_path}"...')
@@ -33,7 +36,11 @@ def create_isolated_tracks_from_audio_file(input_file_path: str, output_dir_path
     if not os.path.exists(output_dir_path):
         os.makedirs(output_dir_path)
     
-    demucs.separate.main([input_file_path, '--out', output_dir_path])
+    demucs_args = [input_file_path, '--out', output_dir_path]
+    if output_mp3_format:
+        demucs_args.extend(['--mp3', '--mp3-preset', DEFAULT_MP3_PRESET])
+
+    demucs.separate.main(demucs_args)
     
     # demucs creates an intermediate directory for the model name.
     # Move the isolated tracks out of this directory.

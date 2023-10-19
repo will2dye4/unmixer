@@ -16,6 +16,8 @@ def parse_args(args: list[str]) -> argparse.Namespace:
     
     parser.add_argument('music_file_or_track_dir', nargs='?',
                         help='path to the file to unmix, or path to a directory containing isolated tracks')
+    parser.add_argument('--mp3', '--output-mp3', action='store_true',
+                        help='output isolated tracks as MP3 files instead of WAV')
     parser.add_argument('-o', '--output', '--output-dir',
                         help=f'path to the directory for output isolated tracks (default: {DEFAULT_OUTPUT_DIR})')
     
@@ -37,7 +39,7 @@ def main(args: Optional[list[str]] = None) -> None:
     other_track_name = None
     
     if path := config.music_file_or_track_dir:
-        path = os.path.expanduser(path)
+        path = os.path.abspath(os.path.expanduser(path))
         if not os.path.exists(path):
             print(f'Failed to locate "{path}"!', file=sys.stderr)
             sys.exit(1)
@@ -56,7 +58,15 @@ def main(args: Optional[list[str]] = None) -> None:
             print(f'Output directory may only be provided when creating isolated tracks!', file=sys.stderr)
             sys.exit(1)
         else:
-            output_dir_path = os.path.expanduser(config.output)
+            output_dir_path = os.path.abspath(os.path.expanduser(config.output))
+    
+    output_mp3_format = False
+    if config.mp3:
+        if path and os.path.isdir(path):
+            print(f'Output format may only be provided when creating isolated tracks!', file=sys.stderr)
+            sys.exit(1)
+        else:
+            output_mp3_format = config.mp3
     
     if config.guitar:
         other_track_name = GUITAR_TRACK_NAME
@@ -65,7 +75,8 @@ def main(args: Optional[list[str]] = None) -> None:
     
     print('Launching Unmixer UI...')
     UnmixerUI(song_path=song_path, input_dir_path=input_dir_path,
-              output_dir_path=output_dir_path, other_track_name=other_track_name).run()
+              output_dir_path=output_dir_path, output_mp3_format=output_mp3_format,
+              other_track_name=other_track_name).run()
 
 
 if __name__ == '__main__':

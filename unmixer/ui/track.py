@@ -42,6 +42,7 @@ class TrackControls(QWidget):
         self.name.setFont(font)
         self.name.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if tooltip:
+            self.setStatusTip(tooltip)
             self.setToolTip(tooltip)
         
         self.muted = False
@@ -139,6 +140,8 @@ class Track(QWidget):
         self.file_path = sound_file.name
         self.controls = TrackControls(sound_file, name=name)
         self.waveform = Waveform(sound_file, background_colors)
+        self.waveform.setStatusTip(self.controls.statusTip())
+        self.waveform.setToolTip(self.controls.toolTip())
         
         layout = QHBoxLayout()
         layout.addWidget(self.controls, stretch=1)
