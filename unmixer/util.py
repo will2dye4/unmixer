@@ -15,3 +15,7 @@ def cleanup_intermediate_dir(output_dir_path: str) -> None:
     if os.path.exists(intermediate_dir) and not os.listdir(intermediate_dir):
         print(f'Removing intermediate directory {intermediate_dir}.')
         shutil.rmtree(intermediate_dir)
+
+
+def expand_path(path: str) -> str:
+    return os.path.abspath(os.path.expanduser(path))

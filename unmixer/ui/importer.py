@@ -18,20 +18,15 @@ from PyQt6.QtWidgets import (
 
 from unmixer.constants import (
     ALLOWED_OTHER_TRACK_NAMES,
-    DEFAULT_ISOLATED_TRACK_FORMAT,
-    DEFAULT_OTHER_TRACK_NAME,
-    DEFAULT_OUTPUT_DIR,
     ISOLATED_TRACK_FORMATS,
-    MP3_FORMAT,
 )
 from unmixer.remix import create_isolated_tracks_from_audio_file
 from unmixer.ui.constants import (
     ERROR_MESSAGE_TITLE,
     FONT_WEIGHT_BOLD,
-    IMPORT_AUDIO_FORMAT_SETTING_KEY,
-    IMPORT_DIR_PATH_SETTING_KEY,
-    OTHER_TRACK_NAME_SETTING_KEY,
+    settings,
 )
+from unmixer.util import expand_path
 
 
 class SongImportSettings(QWidget):
@@ -44,17 +39,7 @@ class SongImportSettings(QWidget):
     def __init__(self, app: 'UnmixerUI') -> None:
         super().__init__()
         self.app = app
-        if self.app.other_track_name:
-            self.other_track_name = self.app.other_track_name
-        else:
-            self.other_track_name = self.app.settings.value(OTHER_TRACK_NAME_SETTING_KEY, DEFAULT_OTHER_TRACK_NAME)
-            if self.other_track_name != self.app.other_track_name:
-                self.app.other_track_name = self.other_track_name
-        if self.app.output_mp3_format:
-            self.audio_format = MP3_FORMAT
-        else:
-            self.audio_format = self.app.settings.value(IMPORT_AUDIO_FORMAT_SETTING_KEY,
-                                                        DEFAULT_ISOLATED_TRACK_FORMAT).lower()
+        self.other_track_name = self.app.other_track_name  # TODO - remove this instance variable
 
         form_layout = QFormLayout()
         form_layout.setHorizontalSpacing(self.LABEL_SPACING)
@@ -71,7 +56,7 @@ class SongImportSettings(QWidget):
         audio_format_button_layout = QHBoxLayout()
         for audio_format in sorted(list(ISOLATED_TRACK_FORMATS)):
             format_button = QRadioButton(audio_format.upper())
-            if audio_format == self.audio_format:
+            if audio_format == self.app.output_format:
                 format_button.setChecked(True)
             audio_format_button_layout.addWidget(format_button)
             self.audio_format_button_group.addButton(format_button)
@@ -98,16 +83,37 @@ class SongImportSettings(QWidget):
         self.setLayout(form_layout)
         self.show()
 
+    def set_audio_format(self, audio_format: str) -> None:
+        audio_format = audio_format.lower()
+        if audio_format not in ISOLATED_TRACK_FORMATS:
+            raise ValueError(f'Unsupported audio format "{audio_format}"!')
+
+        for button in self.audio_format_button_group.buttons():
+            button.setChecked(button.text().lower() == audio_format)
+
     def update_audio_format(self, button: QRadioButton, checked: bool) -> None:
-        if checked and (audio_format := button.text().lower()) != self.audio_format:
-            self.audio_format = audio_format
-            self.app.settings.setValue(IMPORT_AUDIO_FORMAT_SETTING_KEY, audio_format)
+        if checked and (audio_format := button.text().lower()) != self.app.output_format:
+            self.app.output_format = audio_format
+            self.app.settings.setValue(settings.importer.AUDIO_FORMAT, self.app.output_format)
+            if self.app.preferences_window:
+                self.app.preferences_window.set_audio_format(self.app.output_format)
+
+    def set_other_track_name(self, other_track_name: str) -> None:
+        other_track_name = other_track_name.lower()
+        if other_track_name not in ALLOWED_OTHER_TRACK_NAMES:
+            raise ValueError(f'Unsupported track name "{other_track_name}"!')
+
+        self.other_track_name = other_track_name
+        for button in self.other_track_button_group.buttons():
+            button.setChecked(button.text().lower() == self.other_track_name)
 
     def update_other_track_name(self, button: QRadioButton, checked: bool) -> None:
         if checked and (track_name := button.text().lower()) != self.other_track_name:
             self.other_track_name = track_name
             self.app.other_track_name = track_name
-            self.app.settings.setValue(OTHER_TRACK_NAME_SETTING_KEY, track_name)
+            self.app.settings.setValue(settings.prefs.OTHER_TRACK_NAME, self.other_track_name)
+            if self.app.preferences_window:
+                self.app.preferences_window.set_other_track_name(self.app.other_track_name)
 
     def disable_form(self) -> None:
         for button in self.audio_format_button_group.buttons():
@@ -152,12 +158,10 @@ class SongImporter(QWidget):
     
     TITLE_FONT_SIZE = 20
     
-    def __init__(self, app: 'UnmixerUI', input_file_path: Optional[str] = None,
-                 output_dir_path: Optional[str] = None) -> None:
+    def __init__(self, app: 'UnmixerUI', input_file_path: Optional[str] = None) -> None:
         super().__init__()
         self.app = app
-        self.input_file_path = os.path.expanduser(input_file_path) if input_file_path else None
-        self.output_dir_path = os.path.expanduser(output_dir_path or DEFAULT_OUTPUT_DIR)
+        self.input_file_path = expand_path(input_file_path) if input_file_path else None
         
         self._import_process = None
         self.check_import_status_timer = QTimer(self)
@@ -225,20 +229,20 @@ class SongImporter(QWidget):
             return_code = self._import_process.exitcode
             self._import_process = None
             if return_code == 0:
-                self.parent().app.show_track_explorer_window(source_file_path=self.input_file_path,
-                                                             input_dir_path=self.output_dir_path)
+                self.parent().app.import_finished(source_file_path=self.input_file_path,
+                                                  input_dir_path=self.app.output_dir_path)
             else:
                 QMessageBox.critical(self.parent(), ERROR_MESSAGE_TITLE,
                                      f'An error occurred while unmixing {os.path.basename(self.input_file_path)}.')
     
     def choose_file(self) -> None:
-        working_dir = self.parent().app.settings.value(IMPORT_DIR_PATH_SETTING_KEY, os.getcwd())
+        working_dir = self.parent().app.settings.value(settings.importer.DIR_PATH, os.getcwd())
         input_path, _ = QFileDialog.getOpenFileName(self, self.CHOOSE_DIALOG_TITLE, working_dir)
         if not input_path:
             return
         
         self.input_file_path = input_path
-        self.parent().app.settings.setValue(IMPORT_DIR_PATH_SETTING_KEY, os.path.dirname(input_path))
+        self.parent().app.settings.setValue(settings.importer.DIR_PATH, os.path.dirname(input_path))
         self.select_song()
 
     def select_song(self) -> None:
@@ -291,8 +295,8 @@ class SongImporter(QWidget):
         self.update()
 
         self._import_process = Process(target=create_isolated_tracks_from_audio_file,
-                                       args=(self.input_file_path, self.output_dir_path, self.app.other_track_name),
-                                       kwargs={'output_mp3_format': self.import_settings.audio_format == MP3_FORMAT})
+                                       args=(self.input_file_path, self.app.output_dir_path, self.app.other_track_name),
+                                       kwargs={'output_format': self.app.output_format})
         self._import_process.start()
         self.check_import_status_timer.start()
 

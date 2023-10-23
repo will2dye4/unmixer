@@ -33,8 +33,8 @@ from unmixer.constants import OTHER_TRACK_NAME
 from unmixer.ui.constants import (
     ERROR_MESSAGE_TITLE,
     FONT_WEIGHT_BOLD,
-    PLAYBACK_VOLUME_SETTING_KEY,
     SUCCESS_MESSAGE_TITLE,
+    settings,
 )
 from unmixer.ui.track import Track
 from unmixer.ui.waveform import Waveform, WAVEFORM_BACKGROUND_COLORS
@@ -78,12 +78,12 @@ class PlaybackControls(QWidget):
     EXPORT_BUTTON_DISABLED_TOOLTIP_TEMPLATE = 'Enable 2-{n} tracks to export them as a new mix.'
     EXPORT_BUTTON_NOT_ENOUGH_TRACKS_TOOLTIP = 'There are not enough tracks to create a new mix.'
 
-    def __init__(self, parent: 'MultiTrackDisplay') -> None:
-        super().__init__()
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
         
         self.export_button = QPushButton(self.EXPORT_BUTTON_TEXT)
         self.export_button.setDisabled(True)  # Initially, all tracks are selected, so exporting is disabled.
-        if len(parent.tracks) < 3:
+        if len(self.parent().tracks) < 3:
             self.export_button_disabled_tooltip = self.EXPORT_BUTTON_NOT_ENOUGH_TRACKS_TOOLTIP
         else:
             self.export_button_disabled_tooltip = self.EXPORT_BUTTON_DISABLED_TOOLTIP_TEMPLATE.format(n=len(parent.tracks)-1)
@@ -134,7 +134,7 @@ class PlaybackControls(QWidget):
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setMinimum(self.MIN_VOLUME)
         self.volume_slider.setMaximum(self.MAX_VOLUME)
-        self.volume_slider.setValue(parent._volume)  # parent.volume property does not exist yet
+        self.volume_slider.setValue(self.parent()._volume)  # parent.volume property does not exist yet
         self.volume_slider.valueChanged.connect(self.volume_changed)
 
         self.playback_time = QLabel(self.DEFAULT_PLAYBACK_TIME_TEXT)
@@ -289,8 +289,8 @@ class MultiTrackPlayhead(QWidget):
     PLAYHEAD_SIZE = 16
     TIMER_INTERVAL_MILLIS = 500
     
-    def __init__(self, parent: 'MultiTrackDisplay') -> None:
-        super().__init__(parent=parent)
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover)
         
         self._dragging = False
@@ -300,7 +300,6 @@ class MultiTrackPlayhead(QWidget):
         self.update_playhead_timer.timeout.connect(self.repaint)
         self.update_playhead_timer.start()
 
-        self.adjust_size_and_position()
         self.raise_()  # Bring the playhead to the top of the "stack" (z-axis).
         self.show()
         
@@ -411,22 +410,20 @@ class MultiTrackDisplay(QWidget):
     
     TITLE_FONT_SIZE = 30
     
-    def __init__(self, parent: 'UnmixerTrackExplorerWindow', song_title: str, file_paths: list[str],
-                 other_track_name: Optional[str] = None) -> None:
-        super().__init__()
-        self._other_track_name = other_track_name
+    def __init__(self, parent: QWidget, song_title: str, file_paths: list[str]) -> None:
+        super().__init__(parent)
         self.file_path_for_selected_tracks = None
         self._ffmpeg_thread = None
         self._ffmpeg_thread_worker = None
         self._soloed_track = None
-        self._volume = parent.app.settings.value(PLAYBACK_VOLUME_SETTING_KEY, self.DEFAULT_VOLUME)
+        self._volume = self.parent().app.settings.value(settings.playback.VOLUME, self.DEFAULT_VOLUME)
         
         self.title = QLabel(f'Song:  {song_title}')
         font = self.title.font()
         font.setPixelSize(self.TITLE_FONT_SIZE)
         font.setWeight(FONT_WEIGHT_BOLD)
         self.title.setFont(font)
-        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)\
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.audio_output = None
         self.player = None
@@ -437,8 +434,8 @@ class MultiTrackDisplay(QWidget):
             with SoundFile(file_path, 'rb') as sound_file:
                 colors = WAVEFORM_BACKGROUND_COLORS[i % len(WAVEFORM_BACKGROUND_COLORS)]
                 name = (
-                    self._other_track_name.capitalize()
-                    if self._other_track_name and os.path.basename(sound_file.name).lower().startswith(f'{OTHER_TRACK_NAME}.')
+                    self.parent().app.other_track_name.capitalize()
+                    if os.path.basename(sound_file.name).lower().startswith(f'{OTHER_TRACK_NAME}.')
                     else None
                 )
                 self.tracks.append(Track(sound_file, colors, name=name))
@@ -493,7 +490,7 @@ class MultiTrackDisplay(QWidget):
     @volume.setter
     def volume(self, value: int) -> None:
         self._volume = value
-        self.parent().app.settings.setValue(PLAYBACK_VOLUME_SETTING_KEY, value)
+        self.parent().app.settings.setValue(settings.playback.VOLUME, value)
         if self.player:
             self.audio_output.setVolume(self._volume / self.controls.MAX_VOLUME)
             self.player.setAudioOutput(self.audio_output)
@@ -581,8 +578,8 @@ class MultiTrackDisplay(QWidget):
         
         names = []
         for name in sorted(os.path.splitext(os.path.basename(track.file_path))[0] for track in self.selected_tracks):
-            if name.lower() == OTHER_TRACK_NAME and self._other_track_name:
-                name = self._other_track_name
+            if name.lower() == OTHER_TRACK_NAME:
+                name = self.parent().app.other_track_name
             names.append(name)
         
         export_name = '+'.join(names) + extension
