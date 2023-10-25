@@ -29,12 +29,11 @@ from PyQt6.QtWidgets import (
 )
 from soundfile import SoundFile
 
-from unmixer.constants import OTHER_TRACK_NAME
+from unmixer.constants import MAX_VOLUME, MIN_VOLUME, OTHER_TRACK_NAME, settings
 from unmixer.ui.constants import (
     ERROR_MESSAGE_TITLE,
     FONT_WEIGHT_BOLD,
     SUCCESS_MESSAGE_TITLE,
-    settings,
 )
 from unmixer.ui.track import Track
 from unmixer.ui.waveform import Waveform, WAVEFORM_BACKGROUND_COLORS
@@ -60,8 +59,6 @@ class PlaybackControls(QWidget):
     MIN_BUTTON_WIDTH = 90
     MIN_PLAYBACK_TIME_WIDTH = 120
 
-    MIN_VOLUME = 0
-    MAX_VOLUME = 100
     VOLUME_INCREMENT = 5
 
     SKIP_INTERVAL_MILLIS = 1_000  # Skip forward/back one second at a time.
@@ -132,8 +129,8 @@ class PlaybackControls(QWidget):
         self.skip_forward_timer.timeout.connect(self.skip_forward)
 
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.volume_slider.setMinimum(self.MIN_VOLUME)
-        self.volume_slider.setMaximum(self.MAX_VOLUME)
+        self.volume_slider.setMinimum(MIN_VOLUME)
+        self.volume_slider.setMaximum(MAX_VOLUME)
         self.volume_slider.setValue(self.parent()._volume)  # parent.volume property does not exist yet
         self.volume_slider.valueChanged.connect(self.volume_changed)
 
@@ -263,15 +260,15 @@ class PlaybackControls(QWidget):
         self.play_button.setDisabled(True)
 
     def volume_changed(self) -> None:
-        self.parent().volume = max(self.MIN_VOLUME, min(self.volume_slider.value(), self.MAX_VOLUME))
+        self.parent().volume = max(MIN_VOLUME, min(self.volume_slider.value(), MAX_VOLUME))
 
     def increase_volume(self) -> None:
-        if (volume := self.parent().volume) < self.MAX_VOLUME:
-            self.volume_slider.setValue(min(volume + self.VOLUME_INCREMENT, self.MAX_VOLUME))
+        if (volume := self.parent().volume) < MAX_VOLUME:
+            self.volume_slider.setValue(min(volume + self.VOLUME_INCREMENT, MAX_VOLUME))
 
     def decrease_volume(self) -> None:
-        if (volume := self.parent().volume) > self.MIN_VOLUME:
-            self.volume_slider.setValue(max(self.MIN_VOLUME, volume - self.VOLUME_INCREMENT))
+        if (volume := self.parent().volume) > MIN_VOLUME:
+            self.volume_slider.setValue(max(MIN_VOLUME, volume - self.VOLUME_INCREMENT))
 
     def skip_forward(self) -> None:
         if self.player and self.player.isPlaying() and (position := self.player.position()) < self.player.duration():
@@ -404,8 +401,6 @@ class UpdateMediaPlayerWorker(QObject):
 
 class MultiTrackDisplay(QWidget):
     
-    DEFAULT_VOLUME = 80
-    
     EXPORT_DIALOG_TITLE = 'Export Selected Tracks'
     
     TITLE_FONT_SIZE = 30
@@ -416,7 +411,7 @@ class MultiTrackDisplay(QWidget):
         self._ffmpeg_thread = None
         self._ffmpeg_thread_worker = None
         self._soloed_track = None
-        self._volume = self.parent().app.settings.value(settings.playback.VOLUME, self.DEFAULT_VOLUME)
+        self._volume = self.parent().app.setting(settings.playback.VOLUME)
         
         self.title = QLabel(f'Song:  {song_title}')
         font = self.title.font()
@@ -490,9 +485,9 @@ class MultiTrackDisplay(QWidget):
     @volume.setter
     def volume(self, value: int) -> None:
         self._volume = value
-        self.parent().app.settings.setValue(settings.playback.VOLUME, value)
+        self.parent().app.update_setting(settings.playback.VOLUME, value)
         if self.player:
-            self.audio_output.setVolume(self._volume / self.controls.MAX_VOLUME)
+            self.audio_output.setVolume(self._volume / MAX_VOLUME)
             self.player.setAudioOutput(self.audio_output)
     
     def handle_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
@@ -502,7 +497,7 @@ class MultiTrackDisplay(QWidget):
     
     def init_audio(self, source_url: Optional[QUrl] = None) -> tuple[QAudioOutput, QMediaPlayer]:
         audio_output = QAudioOutput()
-        audio_output.setVolume(self._volume / self.controls.MAX_VOLUME)
+        audio_output.setVolume(self._volume / MAX_VOLUME)
         player = QMediaPlayer()
         player.mediaStatusChanged.connect(self.handle_media_status_changed)
         player.setAudioOutput(audio_output)

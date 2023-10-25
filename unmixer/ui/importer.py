@@ -15,16 +15,20 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import torch
 
 from unmixer.constants import (
     ALLOWED_OTHER_TRACK_NAMES,
     ISOLATED_TRACK_FORMATS,
+    MP3_FORMAT,
+    WAV_FORMAT,
+    settings,
 )
 from unmixer.remix import create_isolated_tracks_from_audio_file
 from unmixer.ui.constants import (
     ERROR_MESSAGE_TITLE,
     FONT_WEIGHT_BOLD,
-    settings,
+    OTHER_TRACK_NAME_DISABLED_TOOLTIP,
 )
 from unmixer.util import expand_path
 
@@ -71,10 +75,14 @@ class SongImportSettings(QWidget):
         self.other_track_button_group.buttonToggled.connect(self.update_other_track_name)
 
         other_track_button_layout = QHBoxLayout()
+        disable_other_track_buttons = self.app.should_disable_other_track_name_selection()
         for other_name in ALLOWED_OTHER_TRACK_NAMES:
             name_button = QRadioButton(other_name.capitalize())
             if other_name == self.other_track_name:
                 name_button.setChecked(True)
+            if disable_other_track_buttons:
+                name_button.setDisabled(True)
+                name_button.setToolTip(OTHER_TRACK_NAME_DISABLED_TOOLTIP)
             other_track_button_layout.addWidget(name_button)
             self.other_track_button_group.addButton(name_button)
 
@@ -94,7 +102,7 @@ class SongImportSettings(QWidget):
     def update_audio_format(self, button: QRadioButton, checked: bool) -> None:
         if checked and (audio_format := button.text().lower()) != self.app.output_format:
             self.app.output_format = audio_format
-            self.app.settings.setValue(settings.importer.AUDIO_FORMAT, self.app.output_format)
+            self.app.update_setting(settings.importer.AUDIO_FORMAT, self.app.output_format)
             if self.app.preferences_window:
                 self.app.preferences_window.set_audio_format(self.app.output_format)
 
@@ -111,21 +119,30 @@ class SongImportSettings(QWidget):
         if checked and (track_name := button.text().lower()) != self.other_track_name:
             self.other_track_name = track_name
             self.app.other_track_name = track_name
-            self.app.settings.setValue(settings.prefs.OTHER_TRACK_NAME, self.other_track_name)
+            self.app.update_setting(settings.prefs.OTHER_TRACK_NAME, self.other_track_name)
             if self.app.preferences_window:
                 self.app.preferences_window.set_other_track_name(self.app.other_track_name)
+
+    def disable_other_track_name_buttons(self) -> None:
+        for button in self.other_track_button_group.buttons():
+            button.setDisabled(True)
+            button.setToolTip(OTHER_TRACK_NAME_DISABLED_TOOLTIP)
+
+    def enable_other_track_name_buttons(self) -> None:
+        for button in self.other_track_button_group.buttons():
+            button.setDisabled(False)
+            button.setToolTip('')
 
     def disable_form(self) -> None:
         for button in self.audio_format_button_group.buttons():
             button.setDisabled(True)
-        for button in self.other_track_button_group.buttons():
-            button.setDisabled(True)
+        self.disable_other_track_name_buttons()
 
     def enable_form(self) -> None:
         for button in self.audio_format_button_group.buttons():
             button.setDisabled(False)
-        for button in self.other_track_button_group.buttons():
-            button.setDisabled(False)
+        if not self.app.should_disable_other_track_name_selection():
+            self.enable_other_track_name_buttons()
 
 
 class SongImporter(QWidget):
@@ -232,17 +249,18 @@ class SongImporter(QWidget):
                 self.parent().app.import_finished(source_file_path=self.input_file_path,
                                                   input_dir_path=self.app.output_dir_path)
             else:
+                self.select_song()
                 QMessageBox.critical(self.parent(), ERROR_MESSAGE_TITLE,
                                      f'An error occurred while unmixing {os.path.basename(self.input_file_path)}.')
     
     def choose_file(self) -> None:
-        working_dir = self.parent().app.settings.value(settings.importer.DIR_PATH, os.getcwd())
+        working_dir = self.parent().app.setting(settings.importer.DIR_PATH)
         input_path, _ = QFileDialog.getOpenFileName(self, self.CHOOSE_DIALOG_TITLE, working_dir)
         if not input_path:
             return
         
         self.input_file_path = input_path
-        self.parent().app.settings.setValue(settings.importer.DIR_PATH, os.path.dirname(input_path))
+        self.parent().app.update_setting(settings.importer.DIR_PATH, os.path.dirname(input_path))
         self.select_song()
 
     def select_song(self) -> None:
@@ -294,9 +312,29 @@ class SongImporter(QWidget):
         self.start_import_button.setText(self.CANCEL_BUTTON_TEXT)
         self.update()
 
+        import_kwargs = {
+            'clip_mode': self.app.setting(settings.prefs.CLIP_MODE),
+            'disable_gpu_acceleration': self.app.setting(settings.prefs.DISABLE_GPU_ACCELERATION),
+            'model_name': self.app.setting(settings.prefs.PRETRAINED_MODEL),
+            'other_track_name': self.app.other_track_name,
+            'output_format': self.app.output_format,
+            'remove_model_dir': not self.app.setting(settings.importer.CREATE_MODEL_SUBDIR),
+            'split_into_segments': self.app.setting(settings.prefs.SPLIT_INTO_SEGMENTS),
+        }
+        if not torch.cuda.is_available() or import_kwargs['disable_gpu_acceleration']:
+            import_kwargs['cpu_parallelism'] = self.app.setting(settings.prefs.CPU_PARALLELISM)
+        if import_kwargs['split_into_segments']:
+            import_kwargs['segment_length_seconds'] = self.app.setting(settings.prefs.SEGMENT_LENGTH)
+            import_kwargs['segment_overlap_percent'] = self.app.setting(settings.prefs.SEGMENT_OVERLAP)
+            import_kwargs['random_shift_count'] = self.app.setting(settings.prefs.SHIFT_COUNT)
+        if self.app.output_format == MP3_FORMAT:
+            import_kwargs['mp3_preset'] = self.app.setting(settings.prefs.MP3_PRESET)
+            import_kwargs['mp3_bitrate_kbps'] = self.app.setting(settings.prefs.MP3_BITRATE)
+        elif self.app.output_format == WAV_FORMAT:
+            import_kwargs['wav_bit_depth'] = self.app.setting(settings.prefs.WAV_BIT_DEPTH)
+
         self._import_process = Process(target=create_isolated_tracks_from_audio_file,
-                                       args=(self.input_file_path, self.app.output_dir_path, self.app.other_track_name),
-                                       kwargs={'output_format': self.app.output_format})
+                                       args=(self.input_file_path, self.app.output_dir_path), kwargs=import_kwargs)
         self._import_process.start()
         self.check_import_status_timer.start()
 

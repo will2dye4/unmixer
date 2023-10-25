@@ -1,9 +1,9 @@
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 import abc
 import os.path
 import tempfile
 
-from PyQt6.QtCore import QSettings, Qt, QUrl
+from PyQt6.QtCore import QSettings, QSize, Qt, QUrl
 from PyQt6.QtGui import (
     QAction,
     QCloseEvent,
@@ -21,12 +21,14 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMenuBar,
     QMessageBox,
+    QScrollArea,
 )
 
 from unmixer.constants import (
-    DEFAULT_ISOLATED_TRACK_FORMAT,
     DEFAULT_OTHER_TRACK_NAME,
-    DEFAULT_OUTPUT_DIR,
+    DEFAULT_SETTINGS,
+    HTDEMUCS_6S_MODEL_NAME,
+    settings,
 )
 from unmixer.remix import merge_audio_files
 from unmixer.ui.constants import (
@@ -34,7 +36,6 @@ from unmixer.ui.constants import (
     ORGANIZATION_NAME,
     PROJECT_README_URL,
     SUCCESS_MESSAGE_TITLE,
-    settings,
 )
 from unmixer.ui.importer import SongImporter
 from unmixer.ui.multitrack import MultiTrackDisplay
@@ -187,15 +188,23 @@ class UnmixerPreferencesWindow(UnmixerMainWindow):
 
     WINDOW_TITLE = f'{APP_NAME} | Preferences'
 
-    MIN_HEIGHT = 400
-    MIN_WIDTH = 600
+    MIN_HEIGHT = 600
+    MIN_WIDTH = MIN_HEIGHT
+
+    DEFAULT_HEIGHT = 850
+    DEFAULT_WIDTH = 700
 
     def __init__(self, app: 'UnmixerUI') -> None:
-        super().__init__(app, show_status_bar=False)
+        super().__init__(app)
         self.preferences = UnmixerPreferences(self, app)
-        self.setCentralWidget(self.preferences)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setWidget(self.preferences)
+        self.setCentralWidget(self.scroll_area)
         self.setWindowTitle(self.WINDOW_TITLE)
         self.setMinimumSize(self.MIN_WIDTH, self.MIN_HEIGHT)
+        self.resize(QSize(self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT))
         self.create_menu_bar()
 
     def create_menu_bar(self) -> None:
@@ -255,12 +264,12 @@ class UnmixerImportWindow(UnmixerMainWindow):
 
         if os.path.isdir(input_path):
             self.app.output_dir_path = input_path
-            self.app.settings.setValue(settings.open.TRACK_DIR_PATH, os.path.dirname(input_path))
+            self.app.update_setting(settings.open.TRACK_DIR_PATH, os.path.dirname(input_path))
             self.app.show_track_explorer_window(input_path)
         else:
             self.app.song_path = input_path
             self.importer.input_file_path = input_path
-            self.app.settings.setValue(settings.importer.DIR_PATH, os.path.dirname(input_path))
+            self.app.update_setting(settings.importer.DIR_PATH, os.path.dirname(input_path))
             self.importer.select_song()
 
     def create_menu_bar(self) -> None:
@@ -514,9 +523,13 @@ class UnmixerUI:
         self.settings = QSettings(ORGANIZATION_NAME, APP_NAME)
         self.song_path = expand_path(song_path) if song_path else None
         self.input_dir_path = expand_path(input_dir_path) if input_dir_path else None
-        self.output_dir_path = expand_path(self.settings.value(settings.importer.OUTPUT_DIR_PATH, DEFAULT_OUTPUT_DIR))
-        self.output_format = self.settings.value(settings.importer.AUDIO_FORMAT, DEFAULT_ISOLATED_TRACK_FORMAT)
-        self.other_track_name = self.settings.value(settings.prefs.OTHER_TRACK_NAME, DEFAULT_OTHER_TRACK_NAME)
+        self.output_dir_path = expand_path(self.setting(settings.importer.OUTPUT_DIR_PATH))
+        self.output_format = self.setting(settings.importer.AUDIO_FORMAT)
+        self.other_track_name = self.setting(settings.prefs.OTHER_TRACK_NAME)
+
+        if self.should_disable_other_track_name_selection() and self.other_track_name != DEFAULT_OTHER_TRACK_NAME:
+            self.update_setting(settings.prefs.OTHER_TRACK_NAME, DEFAULT_OTHER_TRACK_NAME)
+            self.other_track_name = DEFAULT_OTHER_TRACK_NAME
 
         self.import_window = None
         self.preferences_window = None
@@ -530,6 +543,12 @@ class UnmixerUI:
         else:
             self.import_window = UnmixerImportWindow(self, source_file_path=self.song_path)
 
+    def setting(self, key: str) -> Any:
+        return self.settings.value(key, DEFAULT_SETTINGS[key])
+
+    def update_setting(self, key: str, value: Any) -> None:
+        self.settings.setValue(key, value)
+
     @staticmethod
     def open_project_readme() -> None:
         QDesktopServices.openUrl(QUrl(PROJECT_README_URL))
@@ -537,14 +556,14 @@ class UnmixerUI:
     def choose_track_directory(self) -> None:
         working_dir = expand_path(self.settings.value(
             settings.open.TRACK_DIR_PATH,
-            self.settings.value(settings.importer.OUTPUT_DIR_PATH, DEFAULT_OUTPUT_DIR)
+            self.setting(settings.importer.OUTPUT_DIR_PATH)
         ))
         input_path = QFileDialog.getExistingDirectory(self.active_window, self.CHOOSE_TRACK_DIR_DIALOG_TITLE,
                                                       working_dir, QFileDialog.Option.ShowDirsOnly)
         if not input_path:
             return
 
-        self.settings.setValue(settings.open.TRACK_DIR_PATH, os.path.dirname(input_path))
+        self.update_setting(settings.open.TRACK_DIR_PATH, os.path.dirname(input_path))
         self.input_dir_path = input_path
         self.show_track_explorer_window(input_path)
 
@@ -560,12 +579,15 @@ class UnmixerUI:
         self.active_window = active_window
         self.app.aboutToQuit.connect(self.stop_import_process)
         self.app.exec()
+
+    def should_disable_other_track_name_selection(self) -> bool:
+        return self.setting(settings.prefs.PRETRAINED_MODEL) == HTDEMUCS_6S_MODEL_NAME
         
     def stop_import_process(self) -> None:
         if self.import_window and ((import_process := self.import_window.importer.import_process) and import_process.is_alive()):
             print(f'Attempting to terminate import process (PID {import_process.pid})...')
             import_process.terminate()
-            cleanup_intermediate_dir(self.output_dir_path)
+            cleanup_intermediate_dir(self.output_dir_path, self.setting(settings.prefs.PRETRAINED_MODEL))
 
     def add_song_to_recently_opened(self, dir_path: Optional[str] = None, reset_menu_bars: bool = True) -> None:
         dir_path = expand_path(dir_path or self.input_dir_path)
@@ -579,7 +601,7 @@ class UnmixerUI:
         if len(recently_opened) > self.MAX_RECENTLY_OPENED_SONGS:
             recently_opened = recently_opened[:self.MAX_RECENTLY_OPENED_SONGS]
         
-        self.settings.setValue(settings.open.RECENTLY_OPENED, recently_opened)
+        self.update_setting(settings.open.RECENTLY_OPENED, recently_opened)
         self.settings.sync()
         if reset_menu_bars:
             self.reset_all_menu_bars()
@@ -588,12 +610,16 @@ class UnmixerUI:
         # The isolated tracks are in a subdirectory of self.output_dir_path named for the song title.
         if source_file_path:
             song_title = os.path.splitext(os.path.basename(source_file_path))[0]
-            dir_path = str(os.path.join(self.output_dir_path, song_title))
+            if self.setting(settings.importer.CREATE_MODEL_SUBDIR):
+                model_name = self.setting(settings.prefs.PRETRAINED_MODEL)
+                dir_path = str(os.path.join(self.output_dir_path, model_name, song_title))
+            else:
+                dir_path = str(os.path.join(self.output_dir_path, song_title))
         else:
             dir_path = input_dir_path or self.input_dir_path
         dir_path = expand_path(dir_path)
 
-        if self.settings.value(settings.prefs.SHOW_TRACK_EXPLORER_WHEN_IMPORT_FINISHED, True):
+        if self.setting(settings.prefs.SHOW_TRACK_EXPLORER_WHEN_IMPORT_FINISHED):
             self.show_track_explorer_window(dir_path, source_file_path=source_file_path)
         elif self.import_window and self.import_window.importer.import_process is None:
             self.import_window.reset()

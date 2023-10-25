@@ -20,6 +20,7 @@ ffmpeg-python = '^0.2.0'
 numpy = '^1.26.0'
 pyqt6 = '^6.5.2'
 soundfile = '^0.12.1'
+torch = '^2.1.0'
 
 [tool.poetry.scripts]
 unmixer = 'unmixer.__main__:main'
