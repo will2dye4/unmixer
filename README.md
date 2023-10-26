@@ -214,7 +214,8 @@ containing isolated tracks onto the Song Importer window to open a Track Explore
 that directory.
 
 **NOTE:** If you used `unmixer` to create isolated tracks for a song, the Track Explorer window
-will open automatically when the song is finished processing. (Again...please be patient!)
+will open automatically when the song is finished processing, unless you disabled that setting.
+(Again...please be patient!)
 
 The Track Explorer window displays the name of the song at the top, a set of playback controls
 at the bottom, and a waveform and a set of controls for each isolated track found in the input
