@@ -3,10 +3,8 @@ import os.path
 import shlex
 import shutil
 
-from demucs.pretrained import DEFAULT_MODEL
 import demucs.separate
 import ffmpeg
-import torch
 
 from unmixer.constants import (
     ALLOWED_CLIP_MODES,
@@ -15,6 +13,7 @@ from unmixer.constants import (
     DEFAULT_ISOLATED_TRACK_FORMAT,
     DEFAULT_MP3_BITRATE_KBPS,
     DEFAULT_MP3_PRESET,
+    DEFAULT_PRETRAINED_MODEL,
     DEFAULT_SPLIT_INPUT_INTO_SEGMENTS,
     DEFAULT_WAV_DEPTH,
     FLAC_FORMAT,
@@ -25,7 +24,7 @@ from unmixer.constants import (
     OTHER_TRACK_NAME,
     WAV_FORMAT,
 )
-from unmixer.util import cleanup_intermediate_dir, expand_path
+from unmixer.util import cleanup_intermediate_dir, expand_path, has_gpu_acceleration
 
 
 MIX_FILTER_NAME = 'amix'
@@ -66,9 +65,8 @@ def create_isolated_tracks_from_audio_file(
     if clip_mode and clip_mode not in ALLOWED_CLIP_MODES:
         raise ValueError(f'Unsupported clip mode "{clip_mode}"!')
 
-    has_gpu_acceleration = torch.cuda.is_available()
     if cpu_parallelism is not None:
-        if has_gpu_acceleration and not disable_gpu_acceleration:
+        if has_gpu_acceleration() and not disable_gpu_acceleration:
             raise ValueError('CPU parallelism may only be provided when GPU acceleration is disabled!')
         if cpu_parallelism <= 0:
             raise ValueError('CPU parallelism must be a positive integer!')
@@ -131,7 +129,7 @@ def create_isolated_tracks_from_audio_file(
 
     if disable_gpu_acceleration:
         demucs_args.extend(['--device', 'cpu'])
-    if cpu_parallelism and (not has_gpu_acceleration or disable_gpu_acceleration):
+    if cpu_parallelism and (not has_gpu_acceleration() or disable_gpu_acceleration):
         demucs_args.extend(['--jobs', str(cpu_parallelism)])
 
     print(f'Invoking demucs with args: {shlex.join(demucs_args)}')
@@ -142,7 +140,7 @@ def create_isolated_tracks_from_audio_file(
     if remove_model_dir is None:
         remove_model_dir = not DEFAULT_CREATE_MODEL_SUBDIR
     file_name = os.path.splitext(os.path.basename(input_file_path))[0]
-    model_name = model_name or DEFAULT_MODEL
+    model_name = model_name or DEFAULT_PRETRAINED_MODEL
 
     if remove_model_dir:
         output_dir = os.path.join(output_dir_path, file_name)

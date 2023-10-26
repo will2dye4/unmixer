@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
 from unmixer.constants import (
     DEFAULT_OTHER_TRACK_NAME,
     DEFAULT_SETTINGS,
-    HTDEMUCS_6S_MODEL_NAME,
+    models,
     settings,
 )
 from unmixer.remix import merge_audio_files
@@ -581,7 +581,7 @@ class UnmixerUI:
         self.app.exec()
 
     def should_disable_other_track_name_selection(self) -> bool:
-        return self.setting(settings.prefs.PRETRAINED_MODEL) == HTDEMUCS_6S_MODEL_NAME
+        return self.setting(settings.prefs.PRETRAINED_MODEL) == models.HTDEMUCS_6S
         
     def stop_import_process(self) -> None:
         if self.import_window and ((import_process := self.import_window.importer.import_process) and import_process.is_alive()):

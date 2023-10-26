@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import math
 import os
 
 from demucs.pretrained import DEFAULT_MODEL
@@ -36,9 +37,6 @@ WAV_DEPTH_FLOAT32 = 'float32'
 DEFAULT_WAV_DEPTH = WAV_DEPTH_INT16
 ALLOWED_WAV_BIT_DEPTHS = (WAV_DEPTH_INT16, WAV_DEPTH_INT24, WAV_DEPTH_FLOAT32)  # in display order
 
-HTDEMUCS_6S_MODEL_NAME = 'htdemucs_6s'
-DEFAULT_PRETRAINED_MODELS = ('hdemucs_mmi', 'htdemucs', HTDEMUCS_6S_MODEL_NAME, 'htdemucs_ft', 'mdx', 'mdx_extra', 'mdx_q')
-
 DEFAULT_CREATE_MODEL_SUBDIR = True
 DEFAULT_DISABLE_GPU_ACCELERATION = False
 DEFAULT_SHOW_TRACK_EXPLORER_WHEN_IMPORT_FINISHED = True
@@ -52,9 +50,13 @@ ALLOWED_CLIP_MODES = (CLAMP_CLIP_MODE, DEFAULT_CLIP_MODE)
 MIN_CPU_PARALLELISM = 1
 DEFAULT_CPU_PARALLELISM = MIN_CPU_PARALLELISM
 
-MIN_SEGMENT_LENGTH_SECONDS = 5
-MAX_SEGMENT_LENGTH_SECONDS = 120
 DEFAULT_SEGMENT_LENGTH_SECONDS = 10
+MIN_SEGMENT_LENGTH_SECONDS = 1
+DEFAULT_MAX_SEGMENT_LENGTH_SECONDS = 120
+# Output from demucs with htdemucs-based models and segment lengths > 7:
+# FATAL: Cannot use a Transformer model with a longer segment than it was trained for. Maximum segment is: 7.8
+SHORT_MAX_SEGMENT_LENGTH_SECONDS = math.floor(7.8)
+
 
 MIN_SEGMENT_OVERLAP_PERCENT = 0
 MAX_SEGMENT_OVERLAP_PERCENT = 50
@@ -63,6 +65,35 @@ DEFAULT_SEGMENT_OVERLAP_PERCENT = 25
 MIN_SHIFT_COUNT = 0
 MAX_SHIFT_COUNT = 10
 DEFAULT_SHIFT_COUNT = MIN_SHIFT_COUNT
+
+
+######################
+# Pre-trained Models #
+######################
+
+DEFAULT_PRETRAINED_MODEL = DEFAULT_MODEL
+
+models = SimpleNamespace()
+models.HDEMUCS_MMI = 'hdemucs_mmi'
+models.HTDEMUCS = 'htdemucs'
+models.HTDEMUCS_6S = 'htdemucs_6s'
+models.HTDEMUCS_FT = 'htdemucs_ft'
+models.MDX = 'mdx'
+models.MDX_EXTRA = 'mdx_extra'
+models.MDX_EXTRA_Q = 'mdx_extra_q'
+models.MDX_Q = 'mdx_q'
+
+DEFAULT_ALLOWED_PRETRAINED_MODELS = (
+    models.HDEMUCS_MMI,
+    models.HTDEMUCS,
+    models.HTDEMUCS_6S,
+    models.HTDEMUCS_FT,
+    models.MDX,
+    models.MDX_EXTRA,
+    models.MDX_EXTRA_Q,
+    models.MDX_Q,
+)
+
 
 #################
 # Settings Keys #
@@ -141,7 +172,7 @@ DEFAULT_SETTINGS = {
     settings.prefs.MP3_BITRATE: DEFAULT_MP3_BITRATE_KBPS,
     settings.prefs.MP3_PRESET: DEFAULT_MP3_PRESET,
     settings.prefs.OTHER_TRACK_NAME: DEFAULT_OTHER_TRACK_NAME,
-    settings.prefs.PRETRAINED_MODEL: DEFAULT_MODEL,
+    settings.prefs.PRETRAINED_MODEL: DEFAULT_PRETRAINED_MODEL,
     settings.prefs.SEGMENT_LENGTH: DEFAULT_SEGMENT_LENGTH_SECONDS,
     settings.prefs.SEGMENT_OVERLAP: DEFAULT_SEGMENT_OVERLAP_PERCENT,
     settings.prefs.SHIFT_COUNT: DEFAULT_SHIFT_COUNT,

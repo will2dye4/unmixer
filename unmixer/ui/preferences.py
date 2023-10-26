@@ -1,8 +1,8 @@
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 import multiprocessing
 import os.path
 
-from demucs.pretrained import DEFAULT_MODEL
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import torch
 
 from unmixer.constants import (
     ALLOWED_CLIP_MODES,
@@ -32,19 +31,19 @@ from unmixer.constants import (
     DEFAULT_CREATE_MODEL_SUBDIR,
     DEFAULT_DISABLE_GPU_ACCELERATION,
     DEFAULT_ISOLATED_TRACK_FORMAT,
+    DEFAULT_MAX_SEGMENT_LENGTH_SECONDS,
     DEFAULT_MP3_BITRATE_KBPS,
     DEFAULT_MP3_PRESET,
     DEFAULT_OTHER_TRACK_NAME,
     DEFAULT_OUTPUT_DIR,
+    DEFAULT_PRETRAINED_MODEL,
     DEFAULT_SEGMENT_LENGTH_SECONDS,
     DEFAULT_SEGMENT_OVERLAP_PERCENT,
     DEFAULT_SHIFT_COUNT,
     DEFAULT_SHOW_TRACK_EXPLORER_WHEN_IMPORT_FINISHED,
     DEFAULT_SPLIT_INPUT_INTO_SEGMENTS,
     DEFAULT_WAV_DEPTH,
-    HTDEMUCS_6S_MODEL_NAME,
     ISOLATED_TRACK_FORMATS,
-    MAX_SEGMENT_LENGTH_SECONDS,
     MAX_SEGMENT_OVERLAP_PERCENT,
     MAX_SHIFT_COUNT,
     MIN_CPU_PARALLELISM,
@@ -54,7 +53,9 @@ from unmixer.constants import (
     MP3_FORMAT,
     MP3_PRESET_MAX,
     MP3_PRESET_MIN,
+    SHORT_MAX_SEGMENT_LENGTH_SECONDS,
     WAV_FORMAT,
+    models,
     settings,
 )
 from unmixer.ui.constants import (
@@ -62,45 +63,54 @@ from unmixer.ui.constants import (
     OK_BUTTON_TEXT,
     OTHER_TRACK_NAME_DISABLED_TOOLTIP,
 )
-from unmixer.util import expand_path, get_available_pretrained_models
+from unmixer.util import expand_path, get_available_pretrained_models, has_gpu_acceleration
 
 
-"""
---repo REPO  (folder containing all pre-trained models for use with --name)
---sig SIG  (locally trained XP signature)
+# TODO - Add support for the following options:
+# --repo REPO  (folder containing all pre-trained models for use with --name)
+# --sig SIG  (locally trained XP signature)
+# --filename FILENAME  Use "{track}", "{trackext}", "{stem}", "{ext}" to use variables of track name without extension,
+#                      track extension, stem name and default output file extension. Default is "{track}/{stem}.{ext}".
 
---filename FILENAME  Use "{track}", "{trackext}", "{stem}", "{ext}" to use variables of track name without extension,
-                     track extension, stem name and default output file extension. Default is "{track}/{stem}.{ext}".
-"""
 
-"""
-Max segment lengths:
-- hdemucs_mmi: >120
-- htdemucs: 7.8
-- htdemucs_6s: 7.8
-- htdemucs_ft: 7.8
-- mdx: >120
-- mdx_extra: >120
-- mdx_q: ??? (diffq error)
-- mdx_extra_q: ??? (diffq error)
-- repro_mdx_a: >120
-- repro_mdx_a_hybrid_only: >120
-- repro_mdx_a_time_only: >120
-"""
+@dataclass
+class PretrainedModel:
+    description: str
+    max_segment_length_seconds: Optional[int] = None
+
 
 # Reference: https://github.com/facebookresearch/demucs/blob/main/README.md#separating-tracks
-PRETRAINED_MODEL_DESCRIPTIONS = {
-    'hdemucs_mmi': 'Hybrid Demucs v3, retrained on MusDB + 800 songs.',
-    'htdemucs': 'First version of Hybrid Transformer Demucs. Trained on MusDB + 800 songs.',
-    HTDEMUCS_6S_MODEL_NAME: 'Six sources version of htdemucs, with piano and guitar being added as sources. '
-                            'Note that the piano source is not working great at the moment.',
-    'htdemucs_ft': 'Fine-tuned version of htdemucs. Separation will take 4x longer but might be a bit better. '
-                   'Same training set as htdemucs.',
-    'mdx': 'Trained only on MusDB HQ. Winning model on track A at the MDX challenge.',
-    'mdx_extra': 'Trained with extra training data, including MusDB test set. '
-                 'Ranked 2nd on track B at the MDX challenge.',
-    'mdx_extra_q': 'Quantized version of mdx_extra. Smaller model size, but quality can be slightly worse.',
-    'mdx_q': 'Quantized version of mdx. Smaller model size, but quality can be slightly worse.',
+PRETRAINED_MODELS = {
+    models.HDEMUCS_MMI: PretrainedModel(
+        description='Hybrid Demucs v3, retrained on MusDB + 800 songs.'
+    ),
+    models.HTDEMUCS: PretrainedModel(
+        description='First version of Hybrid Transformer Demucs. Trained on MusDB + 800 songs.',
+        max_segment_length_seconds=SHORT_MAX_SEGMENT_LENGTH_SECONDS,
+    ),
+    models.HTDEMUCS_6S: PretrainedModel(
+        description='Six sources version of htdemucs, with piano and guitar being added as sources. '
+                    'Note that the piano source is not working great at the moment.',
+        max_segment_length_seconds=SHORT_MAX_SEGMENT_LENGTH_SECONDS,
+    ),
+    models.HTDEMUCS_FT: PretrainedModel(
+        description='Fine-tuned version of htdemucs. Separation will take 4x longer but might be a bit better. '
+                    'Same training set as htdemucs.',
+        max_segment_length_seconds=SHORT_MAX_SEGMENT_LENGTH_SECONDS,
+    ),
+    models.MDX: PretrainedModel(
+        description='Trained only on MusDB HQ. Winning model on track A at the MDX challenge.'
+    ),
+    models.MDX_EXTRA: PretrainedModel(
+        description='Trained with extra training data, including MusDB test set. '
+                    'Ranked 2nd on track B at the MDX challenge.'
+    ),
+    models.MDX_EXTRA_Q: PretrainedModel(
+        description='Quantized version of mdx_extra. Smaller model size, but quality can be slightly worse.'
+    ),
+    models.MDX_Q: PretrainedModel(
+        description='Quantized version of mdx. Smaller model size, but quality can be slightly worse.'
+    ),
 }
 
 WAV_BIT_DEPTHS = {
@@ -222,9 +232,13 @@ class UnmixerPreferences(QWidget):
     PRETRAINED_MODEL_STATUS_TIP = 'Select a pre-trained model to use for prediction.'
 
     SEGMENT_LENGTH_LABEL = 'Segment length'
-    SEGMENT_LENGTH_STATUS_TIP = (
-        'Set the length of each segment (in seconds). '
-        f'Allowed range is {MIN_SEGMENT_LENGTH_SECONDS} to {MAX_SEGMENT_LENGTH_SECONDS}.'
+    DEFAULT_SEGMENT_LENGTH_STATUS_TIP = (
+        f'Set the length of each segment (in seconds). Allowed range is {MIN_SEGMENT_LENGTH_SECONDS} '
+        f'to {DEFAULT_MAX_SEGMENT_LENGTH_SECONDS}.'
+    )
+    SHORT_SEGMENT_LENGTH_STATUS_TIP_TEMPLATE = (
+        f'Set the length of each segment (in seconds). Allowed range for the selected model is '
+        f'{MIN_SEGMENT_LENGTH_SECONDS} to {{max_segment_length_seconds}}.'
     )
     SEGMENT_LENGTH_UNITS_LABEL = 'seconds'
 
@@ -246,6 +260,7 @@ class UnmixerPreferences(QWidget):
         'If enabled, input songs will be split into segments '
         'for prediction to reduce memory usage.'
     )
+    SPLIT_INTO_SEGMENTS_DISABLED_TOOLTIP = OTHER_TRACK_NAME_DISABLED_TOOLTIP
 
     WAV_BIT_DEPTH_LABEL = 'WAV bit depth'
     WAV_BIT_DEPTH_STATUS_TIP = (
@@ -274,16 +289,20 @@ class UnmixerPreferences(QWidget):
         # NOTE: Need to initialize this before self.create_model_subdir_checkbox!
         self.pretrained_model_combo_box = QComboBox()
         selected_model = self.setting(settings.prefs.PRETRAINED_MODEL)
+        selected_model_info = None
         selected_index = 0
         for i, model in enumerate(get_available_pretrained_models()):
             display_name = model
-            if model == DEFAULT_MODEL:
+            if model == DEFAULT_PRETRAINED_MODEL:
                 display_name += ' (default)'
             self.pretrained_model_combo_box.addItem(display_name, model)
-            if model in PRETRAINED_MODEL_DESCRIPTIONS:
-                self.pretrained_model_combo_box.setItemData(i, PRETRAINED_MODEL_DESCRIPTIONS[model],
+            if model_info := PRETRAINED_MODELS.get(model):
+                self.pretrained_model_combo_box.setItemData(i, model_info.description,
+                                                            Qt.ItemDataRole.StatusTipRole)
+                self.pretrained_model_combo_box.setItemData(i, model_info.description,
                                                             Qt.ItemDataRole.ToolTipRole)
             if model == selected_model:
+                selected_model_info = model_info
                 selected_index = i
         self.pretrained_model_combo_box.setCurrentIndex(selected_index)
         self.pretrained_model_combo_box.currentIndexChanged.connect(self.update_pretrained_model)
@@ -337,14 +356,33 @@ class UnmixerPreferences(QWidget):
         )
         self.open_track_explorer_checkbox.toggled.connect(self.open_track_explorer_setting_toggled)
 
+        max_segment_length_seconds = DEFAULT_MAX_SEGMENT_LENGTH_SECONDS
+        if selected_model_info and selected_model_info.max_segment_length_seconds:
+            max_segment_length_seconds = selected_model_info.max_segment_length_seconds
+
+        split_into_segments = self.setting(settings.prefs.SPLIT_INTO_SEGMENTS)
+        if max_segment_length_seconds == SHORT_MAX_SEGMENT_LENGTH_SECONDS and not split_into_segments:
+            split_into_segments = True
+            self.update_setting(settings.prefs.SPLIT_INTO_SEGMENTS, split_into_segments)
+
         self.split_into_segments_checkbox = QCheckBox()
-        self.split_into_segments_checkbox.setChecked(self.setting(settings.prefs.SPLIT_INTO_SEGMENTS))
+        self.split_into_segments_checkbox.setChecked(split_into_segments)
+        self.split_into_segments_checkbox.setDisabled(max_segment_length_seconds == SHORT_MAX_SEGMENT_LENGTH_SECONDS)
+        if not self.split_into_segments_checkbox.isEnabled():
+            self.split_into_segments_checkbox.setToolTip(self.SPLIT_INTO_SEGMENTS_DISABLED_TOOLTIP)
         self.split_into_segments_checkbox.toggled.connect(self.split_into_segments_toggled)
+
+        self.segment_length_label = None
+
+        segment_length_seconds = self.setting(settings.prefs.SEGMENT_LENGTH)
+        if segment_length_seconds > max_segment_length_seconds:
+            segment_length_seconds = max_segment_length_seconds
+            self.app.update_setting(settings.prefs.SEGMENT_LENGTH, max_segment_length_seconds)
 
         self.segment_length_spin_box = QSpinBox()
         self.segment_length_spin_box.setMinimum(MIN_SEGMENT_LENGTH_SECONDS)
-        self.segment_length_spin_box.setMaximum(MAX_SEGMENT_LENGTH_SECONDS)
-        self.segment_length_spin_box.setValue(self.setting(settings.prefs.SEGMENT_LENGTH))
+        self.segment_length_spin_box.setMaximum(max_segment_length_seconds)
+        self.segment_length_spin_box.setValue(segment_length_seconds)
         self.segment_length_spin_box.valueChanged.connect(self.update_segment_length)
 
         self.segment_length_layout = QHBoxLayout()
@@ -430,8 +468,7 @@ class UnmixerPreferences(QWidget):
             self.clip_mode_button_group.addButton(mode_button)
 
         self.disable_gpu_acceleration_checkbox = None
-        self.has_gpu_acceleration = torch.cuda.is_available()
-        if self.has_gpu_acceleration:
+        if has_gpu_acceleration():
             self.disable_gpu_acceleration_checkbox = QCheckBox()
             self.disable_gpu_acceleration_checkbox.setChecked(self.setting(settings.prefs.DISABLE_GPU_ACCELERATION))
             self.disable_gpu_acceleration_checkbox.toggled.connect(self.disable_gpu_acceleration_toggled)
@@ -474,6 +511,17 @@ class UnmixerPreferences(QWidget):
         self.setLayout(layout)
         self.show()
     
+    @property
+    def selected_model(self) -> str:
+        return self.pretrained_model_combo_box.itemData(self.pretrained_model_combo_box.currentIndex(),
+                                                        Qt.ItemDataRole.UserRole)
+
+    @property
+    def max_segment_length_seconds(self) -> int:
+        if (model_info := PRETRAINED_MODELS.get(self.selected_model)) and model_info.max_segment_length_seconds:
+            return model_info.max_segment_length_seconds
+        return DEFAULT_MAX_SEGMENT_LENGTH_SECONDS
+
     @staticmethod
     def form_field_label(text: str, status_tip: str) -> QLabel:
         label = QLabel(text)
@@ -534,8 +582,13 @@ class UnmixerPreferences(QWidget):
         self.form_layout.addRow(split_into_segments_label, self.split_into_segments_checkbox)
 
         # Segment Length
-        segment_length_label = self.form_field_label(self.SEGMENT_LENGTH_LABEL, self.SEGMENT_LENGTH_STATUS_TIP)
-        self.form_layout.addRow(segment_length_label, self.segment_length_layout)
+        segment_length_status_tip = self.DEFAULT_SEGMENT_LENGTH_STATUS_TIP
+        if (max_segment_length_seconds := self.max_segment_length_seconds) == SHORT_MAX_SEGMENT_LENGTH_SECONDS:
+            segment_length_status_tip = self.SHORT_SEGMENT_LENGTH_STATUS_TIP_TEMPLATE.format(
+                max_segment_length_seconds=max_segment_length_seconds
+            )
+        self.segment_length_label = self.form_field_label(self.SEGMENT_LENGTH_LABEL, segment_length_status_tip)
+        self.form_layout.addRow(self.segment_length_label, self.segment_length_layout)
         self.form_layout.setRowVisible(self.segment_length_layout, self.split_into_segments_checkbox.isChecked())
 
         # Segment Overlap
@@ -604,13 +657,11 @@ class UnmixerPreferences(QWidget):
     
     def effective_output_dir(self) -> str:
         if self.create_model_subdir_checkbox.isChecked():
-            model_name = self.pretrained_model_combo_box.itemData(self.pretrained_model_combo_box.currentIndex(),
-                                                                  Qt.ItemDataRole.UserRole)
-            return str(os.path.join(self.app.output_dir_path, model_name))
+            return str(os.path.join(self.app.output_dir_path, self.selected_model))
         return ''
 
     def should_show_cpu_parallelism_slider(self) -> bool:
-        return self.cpu_count > 1 and (not self.has_gpu_acceleration or
+        return self.cpu_count > 1 and (not has_gpu_acceleration() or
                                        self.disable_gpu_acceleration_checkbox.isChecked())
 
     def show_mp3_preferences(self) -> None:
@@ -668,6 +719,30 @@ class UnmixerPreferences(QWidget):
     def refresh_create_model_subdir_preference(self) -> None:
         self.effective_output_dir_label.setText(self.effective_output_dir())
 
+    def refresh_segment_preferences(self) -> None:
+        max_segment_length = self.max_segment_length_seconds
+        if max_segment_length != self.segment_length_spin_box.maximum():
+            self.segment_length_spin_box.setMaximum(max_segment_length)
+            if self.segment_length_spin_box.value() > max_segment_length:
+                self.segment_length_spin_box.setValue(max_segment_length)
+                self.app.update_setting(settings.prefs.SEGMENT_LENGTH, max_segment_length)
+        segment_length_status_tip = self.DEFAULT_SEGMENT_LENGTH_STATUS_TIP
+        if max_segment_length == SHORT_MAX_SEGMENT_LENGTH_SECONDS:
+            segment_length_status_tip = self.SHORT_SEGMENT_LENGTH_STATUS_TIP_TEMPLATE.format(
+                max_segment_length_seconds=max_segment_length
+            )
+        self.segment_length_label.setStatusTip(segment_length_status_tip)
+
+        if max_segment_length == SHORT_MAX_SEGMENT_LENGTH_SECONDS:
+            if not self.split_into_segments_checkbox.isChecked():
+                self.split_into_segments_checkbox.setChecked(True)
+                self.update_setting(settings.prefs.SPLIT_INTO_SEGMENTS, True)
+            self.split_into_segments_checkbox.setDisabled(True)
+            self.split_into_segments_checkbox.setToolTip(self.SPLIT_INTO_SEGMENTS_DISABLED_TOOLTIP)
+        else:
+            self.split_into_segments_checkbox.setDisabled(False)
+            self.split_into_segments_checkbox.setToolTip('')
+
     def restore_defaults(self) -> None:
         output_dir = expand_path(DEFAULT_OUTPUT_DIR)
         self.output_dir.set_dir_path(output_dir)
@@ -695,7 +770,7 @@ class UnmixerPreferences(QWidget):
         self.open_track_explorer_checkbox.setChecked(show_track_explorer_window)
         self.update_setting(settings.prefs.SHOW_TRACK_EXPLORER_WHEN_IMPORT_FINISHED, show_track_explorer_window)
 
-        pretrained_model = DEFAULT_MODEL
+        pretrained_model = DEFAULT_PRETRAINED_MODEL
         self.set_pretrained_model(pretrained_model)
         self.update_setting(settings.prefs.PRETRAINED_MODEL, pretrained_model)
 
@@ -803,14 +878,14 @@ class UnmixerPreferences(QWidget):
                 self.pretrained_model_combo_box.setCurrentIndex(i)
                 self.refresh_create_model_subdir_preference()
                 self.refresh_other_track_name_preferences()
+                self.refresh_segment_preferences()
                 break
 
     def update_pretrained_model(self) -> None:
-        model_name = self.pretrained_model_combo_box.itemData(self.pretrained_model_combo_box.currentIndex(),
-                                                              Qt.ItemDataRole.UserRole)
-        self.update_setting(settings.prefs.PRETRAINED_MODEL, model_name)
+        self.update_setting(settings.prefs.PRETRAINED_MODEL, self.selected_model)
         self.refresh_create_model_subdir_preference()
         self.refresh_other_track_name_preferences()
+        self.refresh_segment_preferences()
 
     def set_mp3_bitrate(self, new_bitrate: int) -> None:
         for i in range(self.mp3_bitrate_combo_box.count()):
@@ -866,7 +941,7 @@ class UnmixerPreferences(QWidget):
 
     def update_segment_length(self) -> None:
         segment_length = max(MIN_SEGMENT_LENGTH_SECONDS,
-                             min(self.segment_length_spin_box.value(), MAX_SEGMENT_LENGTH_SECONDS))
+                             min(self.segment_length_spin_box.value(), self.max_segment_length_seconds))
         self.update_setting(settings.prefs.SEGMENT_LENGTH, segment_length)
 
     def update_segment_overlap(self) -> None:

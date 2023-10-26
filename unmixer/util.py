@@ -3,8 +3,9 @@ import shutil
 
 from demucs.pretrained import _parse_remote_files, REMOTE_ROOT
 from demucs.repo import BagOnlyRepo, RemoteRepo
+import torch
 
-from unmixer.constants import DEFAULT_PRETRAINED_MODELS, ISOLATED_TRACK_FORMATS
+from unmixer.constants import DEFAULT_ALLOWED_PRETRAINED_MODELS, ISOLATED_TRACK_FORMATS
 
 
 def is_isolated_track(file_path: str) -> bool:
@@ -32,5 +33,9 @@ def get_available_pretrained_models() -> list[str]:
         model_names = bag_repo._bags.keys()
     except Exception as e:
         print(f'Failed to load latest pretrained models from demucs: {e}')
-        model_names = DEFAULT_PRETRAINED_MODELS
+        model_names = DEFAULT_ALLOWED_PRETRAINED_MODELS
     return sorted(model_names)
+
+
+def has_gpu_acceleration() -> bool:
+    return torch.cuda.is_available()

@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import torch
 
 from unmixer.constants import (
     ALLOWED_OTHER_TRACK_NAMES,
@@ -30,7 +29,7 @@ from unmixer.ui.constants import (
     FONT_WEIGHT_BOLD,
     OTHER_TRACK_NAME_DISABLED_TOOLTIP,
 )
-from unmixer.util import expand_path
+from unmixer.util import expand_path, has_gpu_acceleration
 
 
 class SongImportSettings(QWidget):
@@ -38,12 +37,14 @@ class SongImportSettings(QWidget):
     AUDIO_FORMAT_LABEL = 'Isolated Track Output Format'
     OTHER_TRACK_LABEL = '"Other" Track Name'
 
+    OTHER_SETTINGS_BUTTON_TEXT = '⚙️ Other Settings...'
+    OTHER_SETTINGS_BUTTON_WIDTH = 200
+
     LABEL_SPACING = 20
 
     def __init__(self, app: 'UnmixerUI') -> None:
         super().__init__()
         self.app = app
-        self.other_track_name = self.app.other_track_name  # TODO - remove this instance variable
 
         form_layout = QFormLayout()
         form_layout.setHorizontalSpacing(self.LABEL_SPACING)
@@ -78,7 +79,7 @@ class SongImportSettings(QWidget):
         disable_other_track_buttons = self.app.should_disable_other_track_name_selection()
         for other_name in ALLOWED_OTHER_TRACK_NAMES:
             name_button = QRadioButton(other_name.capitalize())
-            if other_name == self.other_track_name:
+            if other_name == self.app.other_track_name:
                 name_button.setChecked(True)
             if disable_other_track_buttons:
                 name_button.setDisabled(True)
@@ -88,7 +89,17 @@ class SongImportSettings(QWidget):
 
         form_layout.addRow(self.audio_format_label, audio_format_button_layout)
         form_layout.addRow(self.other_track_label, other_track_button_layout)
-        self.setLayout(form_layout)
+
+        self.other_settings_button = QPushButton(self.OTHER_SETTINGS_BUTTON_TEXT)
+        self.other_settings_button.setFixedWidth(self.OTHER_SETTINGS_BUTTON_WIDTH)
+        self.other_settings_button.clicked.connect(self.app.bring_preferences_window_to_front)
+
+        layout = QVBoxLayout()
+        layout.addLayout(form_layout)
+        sublayout = QHBoxLayout()
+        sublayout.addWidget(self.other_settings_button)
+        layout.addLayout(sublayout)
+        self.setLayout(layout)
         self.show()
 
     def set_audio_format(self, audio_format: str) -> None:
@@ -111,15 +122,14 @@ class SongImportSettings(QWidget):
         if other_track_name not in ALLOWED_OTHER_TRACK_NAMES:
             raise ValueError(f'Unsupported track name "{other_track_name}"!')
 
-        self.other_track_name = other_track_name
+        self.app.other_track_name = other_track_name
         for button in self.other_track_button_group.buttons():
-            button.setChecked(button.text().lower() == self.other_track_name)
+            button.setChecked(button.text().lower() == self.app.other_track_name)
 
     def update_other_track_name(self, button: QRadioButton, checked: bool) -> None:
-        if checked and (track_name := button.text().lower()) != self.other_track_name:
-            self.other_track_name = track_name
+        if checked and (track_name := button.text().lower()) != self.app.other_track_name:
             self.app.other_track_name = track_name
-            self.app.update_setting(settings.prefs.OTHER_TRACK_NAME, self.other_track_name)
+            self.app.update_setting(settings.prefs.OTHER_TRACK_NAME, self.app.other_track_name)
             if self.app.preferences_window:
                 self.app.preferences_window.set_other_track_name(self.app.other_track_name)
 
@@ -321,7 +331,7 @@ class SongImporter(QWidget):
             'remove_model_dir': not self.app.setting(settings.importer.CREATE_MODEL_SUBDIR),
             'split_into_segments': self.app.setting(settings.prefs.SPLIT_INTO_SEGMENTS),
         }
-        if not torch.cuda.is_available() or import_kwargs['disable_gpu_acceleration']:
+        if not has_gpu_acceleration() or import_kwargs['disable_gpu_acceleration']:
             import_kwargs['cpu_parallelism'] = self.app.setting(settings.prefs.CPU_PARALLELISM)
         if import_kwargs['split_into_segments']:
             import_kwargs['segment_length_seconds'] = self.app.setting(settings.prefs.SEGMENT_LENGTH)
