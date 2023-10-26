@@ -34,10 +34,10 @@ from unmixer.util import expand_path, has_gpu_acceleration
 
 class SongImportSettings(QWidget):
 
-    AUDIO_FORMAT_LABEL = 'Isolated Track Output Format'
-    OTHER_TRACK_LABEL = '"Other" Track Name'
+    AUDIO_FORMAT_LABEL = 'Isolated track output format'
+    OTHER_TRACK_LABEL = '"Other" track name'
 
-    OTHER_SETTINGS_BUTTON_TEXT = '⚙️ Other Settings...'
+    OTHER_SETTINGS_BUTTON_TEXT = '⚙️ More settings...'
     OTHER_SETTINGS_BUTTON_WIDTH = 200
 
     LABEL_SPACING = 20
@@ -175,7 +175,7 @@ class SongImporter(QWidget):
     DEFAULT_SUBTITLE_TEXT = 'You can also drop a song here from your computer.'
     IMPORTING_SUBTITLE_TEXT = (
         'Please wait; this may take some time.\n'
-        'The time required is roughly equal to the length of the song itself.'
+        'The time required depends on the length of the song and the current prediction model.'
     )
     SONG_SELECTED_SUBTITLE_TEXT = f'Press [{START_BUTTON_TEXT}] to begin unmixing the song into isolated tracks.'
     

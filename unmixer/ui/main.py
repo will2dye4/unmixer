@@ -33,6 +33,7 @@ from unmixer.constants import (
 from unmixer.remix import merge_audio_files
 from unmixer.ui.constants import (
     APP_NAME,
+    ERROR_MESSAGE_TITLE,
     ORGANIZATION_NAME,
     PROJECT_README_URL,
     SUCCESS_MESSAGE_TITLE,
@@ -112,13 +113,20 @@ class UnmixerMainWindow(QMainWindow):
 
         # File > Open Recent > [Song Title]
         recently_opened = self.app.settings.value(settings.open.RECENTLY_OPENED, [], 'QStringList')
+        removed = False
         for recent_dir_path in recently_opened:
-            # TODO - ensure path still exists before adding it to the menu (if not, update settings)
+            if not os.path.exists(recent_dir_path):
+                recently_opened.remove(recent_dir_path)
+                removed = True
+                continue
             song_title = os.path.basename(recent_dir_path.rstrip(os.path.sep))
             open_action = recent_menu.addAction(song_title)
             open_action.setStatusTip(recent_dir_path)
             open_action.setToolTip(recent_dir_path)
             open_action.triggered.connect(self.open_recent_menu_action(recent_dir_path))
+        
+        if removed:
+            self.app.update_setting(settings.open.RECENTLY_OPENED, recently_opened)
 
         return file_menu
 
@@ -631,6 +639,10 @@ class UnmixerUI:
         dir_path = expand_path(input_dir_path)
         if dir_path in self.track_windows:
             self.track_windows[dir_path].bring_to_front()
+            return
+
+        if not os.path.exists(dir_path):
+            QMessageBox.warning(self.active_window, ERROR_MESSAGE_TITLE, f'Could not locate directory {dir_path}!')
             return
 
         window = UnmixerTrackExplorerWindow(self, input_dir_path=dir_path, source_file_path=source_file_path)

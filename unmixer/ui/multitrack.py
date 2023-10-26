@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 )
 from soundfile import SoundFile
 
-from unmixer.constants import MAX_VOLUME, MIN_VOLUME, OTHER_TRACK_NAME, settings
+from unmixer.constants import MAX_VOLUME, MIN_VOLUME, settings
 from unmixer.ui.constants import (
     ERROR_MESSAGE_TITLE,
     FONT_WEIGHT_BOLD,
@@ -428,12 +428,7 @@ class MultiTrackDisplay(QWidget):
         for i, file_path in enumerate(file_paths):
             with SoundFile(file_path, 'rb') as sound_file:
                 colors = WAVEFORM_BACKGROUND_COLORS[i % len(WAVEFORM_BACKGROUND_COLORS)]
-                name = (
-                    self.parent().app.other_track_name.capitalize()
-                    if os.path.basename(sound_file.name).lower().startswith(f'{OTHER_TRACK_NAME}.')
-                    else None
-                )
-                self.tracks.append(Track(sound_file, colors, name=name))
+                self.tracks.append(Track(sound_file, colors))
                 
         self.controls = PlaybackControls(self)  # This needs to be initialized AFTER self.tracks is populated!
         
@@ -571,12 +566,7 @@ class MultiTrackDisplay(QWidget):
         _, extension = os.path.splitext(temp_file_path)
         export_dir = os.path.dirname(self.selected_tracks[0].file_path)
         
-        names = []
-        for name in sorted(os.path.splitext(os.path.basename(track.file_path))[0] for track in self.selected_tracks):
-            if name.lower() == OTHER_TRACK_NAME:
-                name = self.parent().app.other_track_name
-            names.append(name)
-        
+        names = sorted(os.path.splitext(os.path.basename(track.file_path))[0] for track in self.selected_tracks)
         export_name = '+'.join(names) + extension
         default_export_path = os.path.join(export_dir, export_name)
         export_path, _ = QFileDialog.getSaveFileName(self, self.EXPORT_DIALOG_TITLE, default_export_path)
