@@ -47,7 +47,7 @@ the program accepts.
 
 ```
 $ unmixer -h
-usage: unmixer [-h] [--mp3] [-o OUTPUT] [-g | -p] [music_file_or_track_dir]
+usage: unmixer [-h] [music_file_or_track_dir]
 
 create and explore isolated tracks from music files
 
@@ -57,11 +57,6 @@ positional arguments:
 
 options:
 -h, --help            show this help message and exit
---mp3, --output-mp3   output isolated tracks as MP3 files instead of WAV
--o OUTPUT, --output OUTPUT, --output-dir OUTPUT
-                      path to the directory for output isolated tracks (default: ~/unmixer)
--g, --guitar          show "Guitar" track instead of "Other"
--p, --piano           show "Piano" track instead of "Other"
 ```
 
 ### Creating Isolated Tracks
@@ -88,7 +83,9 @@ change to reflect that the song is ready to be processed (see the screenshot bel
 ![Import Ready Dialog](https://raw.githubusercontent.com/will2dye4/unmixer/master/images/import_ready_dialog.png)
 
 Use the radio buttons to set the desired output format for the isolated tracks (MP3 or WAV)
-and the name of the "other" track (see Customizing the "Other" Track Name, below).
+and the name of the "other" track (see Customizing the "Other" Track Name, below). Press
+`More settings...` to customize additional settings such as the output directory, prediction
+model, and so on.
 
 If you selected the wrong song by mistake, press `Choose a different song...` to select a
 different file. When you are ready to unmix the song into isolated tracks, press the `Start`
@@ -101,8 +98,11 @@ button to abandon processing of the song.
 ![Song Processing Dialog](https://raw.githubusercontent.com/will2dye4/unmixer/master/images/song_processing_dialog.png)
 
 **Please be patient during the process of creating the isolated tracks**, as it will
-take some time to complete! It typically takes about as long as the source song itself
-(or a bit longer) to create the isolated tracks for a song. For example, if a song
+take some time to complete! The time required largely depends on the length of the source
+song, the selected prediction model, and other factors such as whether your device
+supports GPU acceleration or the configured parallelism. As a baseline, with no GPU
+acceleration and a single CPU process, it typically takes about as long as the source song
+itself (or a bit longer) to create the isolated tracks for a song. For example, if a song
 is 5 minutes long, it will likely take roughly 5 minutes to create isolated tracks for
 that song.
 
@@ -113,50 +113,45 @@ shell or terminal from which you launched the `unmixer` UI to get a better appro
 of how long it will take to process the song. A visual progress bar may be added in
 a future version.
 
-Although it may be possible to speed up the process by adjusting the flags passed to
-`demucs`, the current implementation tends to favor producing higher quality isolated
-tracks at the expense of taking a bit longer. A future version of `unmixer` may allow
-customizing the quality, bitrate, machine learning model, or other settings that
-can be configured by `demucs`; the current version does not allow any such customization
-aside from selecting the output format (see below).
-
 #### Output Format
 
 By default, isolated tracks are created as WAV files for the highest quality. To create
-MP3 files instead, the `--mp3`/`--output-mp3` flag may be passed to `unmixer`. Alternatively,
-use the **Isolated Track Output Format** radio buttons in the Song Importer window to select
-either MP3 or WAV format.
+FLAC or MP3 files instead, use the **Isolated track output format** radio buttons in the
+Song Importer window to select the desired format.
 
 **NOTE:** Mixes exported using the Track Explorer (see below) will use the same format
 as the source isolated track files.
+
+**NOTE:** If you selected an output format other than WAV, replace the `.wav` file extension
+in the following sections with the appropriate extension (`.flac` or `.mp3`).
 
 #### Output Tracks
 
 The following isolated tracks are created by default:
 
-* `bass.wav` (or `bass.mp3`)
-* `drums.wav` (or `drums.mp3`)
-* `other.wav` (or `other.mp3`)
-* `vocals.wav` (or `vocals.mp3`)
+* `bass.wav`
+* `drums.wav`
+* `other.wav`
+* `vocals.wav`
 
 These are the sources that are supported by `demucs`; unfortunately, there is currently
 no specific source available for guitar, piano, or any others besides bass, drums, and
 vocals. Any part of the song's audio that is not identified as bass, drums, or vocals
-will be found in the `other.(mp3|wav)` file.
+will be found in the `other.wav` file.
+
+**NOTE:** `demucs` does include one pre-trained model, `htdemucs_6s`, which includes guitar
+and piano as additional sources. This model is still in an experimental stage and does not
+perform reliably at separating all sources.
 
 #### Customizing the "Other" Track Name
 
-In some cases, the isolated track `other.(mp3|wav)` may contain primarily a single instrument,
+In some cases, the isolated track `other.wav` may contain primarily a single instrument,
 such as a guitar or piano. In these cases, it may be useful for the resulting output track
-to have a corresponding name such as `guitar.(mp3|wav)` or `piano.(mp3|wav)` instead of the
-default `other.(mp3|wav)`.
+to have a corresponding name such as `guitar.wav` or `piano.wav` instead of the
+default `other.wav`.
 
-To change the name of the "other" track to `guitar.(mp3|wav)`, the `-g`/`--guitar` flag may be
-passed to `unmixer`. Similarly, to change the name of the "other" track to `piano.(mp3|wav)`,
-the `-p`/`--piano` flag may be passed to `unmixer` instead. (It is an error to pass both
-`-g` and `-p` at the same time.) Alternatively, use the **"Other" Track Name** radio buttons
-in the Song Importer window to select Guitar, Piano, or Other.
-
+To change the name of the "other" track to `guitar.wav` or `piano.wav`, use the
+**"Other" track name** radio buttons in the Song Importer window to select the desired name.
 It is not currently possible to customize the name of the "other" track to be any arbitrary name,
 although this feature may be added in a future version.
 
@@ -164,18 +159,45 @@ although this feature may be added in a future version.
 
 By default, `unmixer` creates isolated tracks in subdirectories of the directory `~/unmixer`.
 Each song's isolated tracks will be placed in a new subdirectory of the output directory
-named based on the song's filename. For example, isolated tracks for a song named
-`Subdivisions.mp3` would be placed in the directory `~/unmixer/Subdivisions` by default
-(note that the subdirectory does not include the `.mp3` file extension).
+named based on the selected prediction model and the song's filename. For example, isolated tracks
+for a song named `Subdivisions.mp3` created using the model `htdemucs` would be placed in the
+directory `~/unmixer/htdemucs/Subdivisions` by default (note that the subdirectory does not include
+the `.mp3` file extension).
 
-**NOTE:** Creating isolated tracks for multiple songs with the same filename will result in
-any previous songs' isolated tracks being overwritten! If you need to process multiple distinct
-songs with the same filename, be sure to rename the created directories (or rename the song
-files themselves) to avoid conflicts!
+**NOTE:** Creating isolated tracks for multiple songs with the same filename using the same model
+will result in any previous songs' isolated tracks being overwritten! If you need to process
+multiple distinct songs with the same filename, be sure to rename the created directories (or
+rename the song files themselves) to avoid conflicts!
 
-Use the `-o`/`--output`/`--output-dir` flag to customize the output directory for isolated tracks
-created by `unmixer`. A subdirectory of this directory will be created for the isolated tracks, as
-described above.
+To customize the output directory for isolated tracks, press `More settings...` in the Song
+Importer window and adjust the `Output directory` setting in the Unmixer Preferences window
+that opens. You may also enable or disable creation of a subdirectory named for the selected
+prediction model. A subdirectory of the selected output directory will be created for each
+song's isolated tracks, as described above.
+
+#### Other Settings
+
+To see all customizable settings, press `More settings...` in the Song Importer window after
+selecting a song. The Unmixer Preferences window will appear (see the screenshot below).
+Hover over each setting's label to see a description of that setting in the status bar at
+the bottom of the Unmixer Preferences window. See the
+[demucs docs](https://github.com/facebookresearch/demucs/tree/main#separating-tracks) for
+details about settings such as clip mode, segmentation of input songs, and so on.
+
+Changes made to the settings are saved automatically; however, changes made to settings while
+a song is being processed will not take effect until the next time a song is imported. Press
+`Restore Defaults` at the bottom of the Unmixer Preferences window to revert all settings
+to their default values.
+
+![Preferences Dialog](https://raw.githubusercontent.com/will2dye4/unmixer/master/images/preferences.png)
+
+**NOTE:** Some settings may not be available or have limited configurability depending on the
+selected prediction model. For example, the `htdemucs` family of models has a maximum segment
+length of 7.8 seconds, so `unmixer` requires that songs processed using this model be split into
+segments with a maximum segment length of no more than 7 seconds (since `demucs` accepts the
+segment length as an integer). Similarly, `unmixer` does not allow customizing the "other"
+track name when using the `htdemucs_6s` model because this model already includes guitar and piano
+as distinct sources.
 
 ### Exploring Isolated Tracks
 
@@ -192,7 +214,8 @@ containing isolated tracks onto the Song Importer window to open a Track Explore
 that directory.
 
 **NOTE:** If you used `unmixer` to create isolated tracks for a song, the Track Explorer window
-will open automatically when the song is finished processing. (Again...please be patient!)
+will open automatically when the song is finished processing, unless you disabled that setting.
+(Again...please be patient!)
 
 The Track Explorer window displays the name of the song at the top, a set of playback controls
 at the bottom, and a waveform and a set of controls for each isolated track found in the input
@@ -250,12 +273,3 @@ If you export custom mixes in the same directory where the isolated tracks are l
 custom mixes will also be loaded if you reopen the same directory using `unmixer` in the future.
 If you want to avoid this, save any custom mixes to a different directory, such as a `remixes`
 subdirectory of the directory where the isolated tracks are located.
-
-#### Customizing the "Other" Track Name
-
-In the same way as when creating isolated tracks (see above), the `-g`/`--guitar` flag may be
-passed to `unmixer` to change the displayed name of the `Other` track (if present) to `Guitar`.
-Similarly, to change the name of the `Other` track to `Piano`, the `-p`/`--piano` flag may be
-passed to `unmixer` instead. (It is an error to pass both `-g` and `-p` at the same time.)
-It is not currently possible to customize the name of the `Other` track to be any arbitrary
-name, although this feature may be added in a future version.
